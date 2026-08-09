@@ -1,8 +1,3 @@
-# libs/math/CMakeLists.txt
-add_library(queues)
+add_library(queues INTERFACE)
 
-target_sources(queues PRIVATE SpscQueue.cpp)
-
-target_include_directories(queues PUBLIC SpscQueue.hpp)
-
-target_compile_definitions(queues PRIVATE QUEUES_INTERNAL_BUILD)
+target_include_directories(queues INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
