@@ -13,7 +13,7 @@ if(BUILD_TESTS)
     target_link_libraries(AnasaTests
                            PRIVATE 
                           Catch2::Catch2WithMain
-                          AnasaQueues
+                          queues
     )
 
     source_group(
