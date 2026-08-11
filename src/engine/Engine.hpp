@@ -19,11 +19,10 @@ namespace anasa
     private:
 
         // (1) Simulated real-time audio thread.
-        SharedState        _sharedState;
-
-        ReadyAudioQueue    _readyAudioQueue;
-        AudioSimulator     _audioSimulator;
-        bool               _started;
+        SharedState                      _sharedState;
+        std::unique_ptr<ReadyAudioQueue> _readyAudioQueue;
+        AudioSimulator                   _audioSimulator;
+        bool                             _started;
     };
 }
 
