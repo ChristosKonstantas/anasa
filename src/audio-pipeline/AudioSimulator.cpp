@@ -5,7 +5,7 @@
 namespace anasa 
 {
     using Clock = std::chrono::steady_clock;
-    AudioSimulator::AudioSimulator(SharedState& sharedState, SpscQueue<AudioBlock, READY_QUEUE_SLOTS>& readyAudioQueue)
+    AudioSimulator::AudioSimulator(SharedState& sharedState, ReadyAudioQueue& readyAudioQueue)
         : _sharedState(sharedState),
           _readyAudioQueue(readyAudioQueue),
           _stopRequested(false),

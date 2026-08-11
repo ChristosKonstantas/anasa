@@ -10,11 +10,11 @@
 namespace anasa
 {
     using ReadyAudioQueue = SpscQueue<AudioBlock, READY_QUEUE_SLOTS>;
-    
+
     class AudioSimulator
     {
     public:
-        AudioSimulator(SharedState& sharedState, SpscQueue<AudioBlock, READY_QUEUE_SLOTS>& readyAudioQueue);
+        AudioSimulator(SharedState& sharedState, ReadyAudioQueue& readyAudioQueue);
         ~AudioSimulator();
 
         void                            start();
