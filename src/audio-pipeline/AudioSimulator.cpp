@@ -1,12 +1,16 @@
 #include "AudioSimulator.hpp"
+#include "audio-pipeline/AudioConstants.hpp"
+
+#include <cassert>
 #include <chrono>
 #include <thread>
 
 namespace anasa 
 {
     using Clock = std::chrono::steady_clock;
-    AudioSimulator::AudioSimulator(SharedState& sharedState, ReadyAudioQueue& readyAudioQueue)
-        : _sharedState(sharedState),
+    AudioSimulator::AudioSimulator(AudioSettings settings, SharedState& sharedState, ReadyAudioQueue& readyAudioQueue)
+        : _settings(settings),
+          _sharedState(sharedState),
           _readyAudioQueue(readyAudioQueue),
           _stopRequested(false),
           _started(false),
@@ -15,6 +19,9 @@ namespace anasa
           _callbackMaxInUs(0),
           _checksum(0.0)
     {
+        assert(_settings.sampleRate > 0);
+        assert(_settings.audioBlockFrames > 0);
+        assert(_settings.audioBlockFrames <= MAX_AUDIO_BLOCK_FRAMES);
     }
 
     AudioSimulator::~AudioSimulator()
@@ -73,7 +80,7 @@ namespace anasa
 
         // calculate the duration of one audio block 
         Clock::duration period = std::chrono::duration_cast<Clock::duration>
-        (std::chrono::duration<double>(static_cast<double>(AUDIO_BLOCK_FRAMES) / static_cast<double>(SAMPLE_RATE)));
+        (std::chrono::duration<double>(static_cast<double>(_settings.audioBlockFrames) / static_cast<double>(_settings.sampleRate)));
 
         // If the engine starts now, the first callback is scheduled for now + period
         Clock::time_point nextCallbackTime = Clock::now() + period;
@@ -156,8 +163,12 @@ namespace anasa
 
         ++_callbacks;
 
-        bool isExactBlock = _readyAudioQueue.peek(head) && head.generation == globalGeneration && head.firstFrame == _audioState.expectedBlockStartFrame;
-
+        const bool isExactBlock =
+            _readyAudioQueue.peek(head) &&
+            head.generation == globalGeneration &&
+            head.firstFrame == _audioState.expectedBlockStartFrame &&
+            head.frameCount == _settings.audioBlockFrames;
+            
         if (!isExactBlock) 
         {
             // No correct block was ready for this callback period.
@@ -170,14 +181,21 @@ namespace anasa
             // The project has no real audio device so it can't send the samples to speakers
             // therefore we use _checksum to show that we consume audio data
             // and prevent compiler from treating the rendered samples as entirely unused
-            for (float sample : head.samples)
+            for (int i = 0; i < head.frameCount; ++i)
+            {
+                const float sample = head.samples[i];
                 _checksum += static_cast<double>(sample) * sample;
+            }
         }
         
         // Advance the audio timeline
-        _audioState.expectedBlockStartFrame += AUDIO_BLOCK_FRAMES;
+        _audioState.expectedBlockStartFrame += _settings.audioBlockFrames;
         // Publish progress to the scheduler
         _sharedState.nextUnconsumedFrame.store(_audioState.expectedBlockStartFrame, std::memory_order_release);
     }
-
+    
+    int AudioSimulator::alignToAudioBlock(int frame) const
+    {
+        return frame - frame % _settings.audioBlockFrames;
+    }
 } // namespace anasa

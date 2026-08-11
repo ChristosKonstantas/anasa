@@ -3,10 +3,10 @@
 namespace anasa
 {
 
-    Engine::Engine()
+    Engine::Engine(EngineSettings settings)
         :_sharedState(),
          _readyAudioQueue(std::make_unique<ReadyAudioQueue>()),
-         _audioSimulator(_sharedState, *_readyAudioQueue),
+         _audioSimulator(settings.audio, _sharedState, *_readyAudioQueue),
          _started(false)
     {
     }
@@ -20,6 +20,8 @@ namespace anasa
     {
         if (_started)
             return;
+
+        _sharedState.stop.store(false, std::memory_order_release);
 
         _audioSimulator.start();
 
@@ -37,6 +39,5 @@ namespace anasa
 
         _started = false;
     }
-
 
 } // namespace anasa

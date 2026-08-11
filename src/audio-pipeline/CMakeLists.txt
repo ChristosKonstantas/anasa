@@ -3,6 +3,10 @@ anasa_add_module(
     SOURCES
         AudioSimulator.hpp
         AudioSimulator.cpp
+        AudioConstants.hpp
+        AudioQueue.hpp
+        AudioSettings.hpp
+        AudioTypes.hpp
 )
 
-target_link_libraries(audio-pipeline PUBLIC queues)
+target_link_libraries(audio-pipeline PUBLIC queues playback)

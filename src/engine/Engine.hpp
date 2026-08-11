@@ -1,16 +1,20 @@
 #ifndef ENGINE_HPP
 #define ENGINE_HPP
 
-#include "EngineTypes.hpp"
-#include "EngineSettings.hpp"
+#include <memory>
+
+#include "engine/EngineTypes.hpp"
+#include "engine/EngineSettings.hpp"
+#include "audio-pipeline/AudioQueue.hpp"
 #include "audio-pipeline/AudioSimulator.hpp"
+#include "playback/PlaybackState.hpp"
 
 namespace anasa
 {
     class Engine
     {
     public:
-        Engine();
+        explicit Engine(EngineSettings settings = {});
         ~Engine();
 
         void start();
