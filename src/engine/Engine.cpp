@@ -5,8 +5,8 @@ namespace anasa
 
     Engine::Engine(EngineSettings settings)
         :_sharedState(),
-         _readyAudioQueue(std::make_unique<ReadyAudioQueue>()),
-         _audioSimulator(settings.audio, _sharedState, *_readyAudioQueue),
+         _readyAudioQueue(READY_AUDIO_QUEUE_SLOTS),
+         _audioSimulator(settings.audio, _sharedState, _readyAudioQueue),
          _started(false)
     {
     }

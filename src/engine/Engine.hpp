@@ -5,7 +5,7 @@
 
 #include "engine/EngineTypes.hpp"
 #include "engine/EngineSettings.hpp"
-#include "audio-pipeline/AudioQueue.hpp"
+#include "utils/queues/SpscQueue.hpp"
 #include "audio-pipeline/AudioSimulator.hpp"
 #include "playback/PlaybackState.hpp"
 
@@ -24,7 +24,7 @@ namespace anasa
 
         // (1) Simulated real-time audio thread.
         SharedState                      _sharedState;
-        std::unique_ptr<ReadyAudioQueue> _readyAudioQueue;
+        SpscQueue<AudioBlock>            _readyAudioQueue;
         AudioSimulator                   _audioSimulator;
         bool                             _started;
     };
