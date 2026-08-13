@@ -32,10 +32,7 @@ if(BUILD_TESTS)
     if(DEFINED ENV{CATCH2_LIB}
        AND EXISTS "$ENV{CATCH2_LIB}/CMakeLists.txt")
 
-        message(
-            STATUS
-            "Catch2: using local checkout at $ENV{CATCH2_LIB}"
-        )
+        message(STATUS "Catch2: using local checkout at $ENV{CATCH2_LIB}")
 
         set(catch2_SOURCE_DIR "$ENV{CATCH2_LIB}")
 
@@ -61,10 +58,7 @@ if(BUILD_TESTS)
 
     endif()
 
-    list(
-        APPEND CMAKE_MODULE_PATH
-        ${catch2_SOURCE_DIR}/extras
-    )
+    list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 
 endif()
 
