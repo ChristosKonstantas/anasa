@@ -4,7 +4,6 @@ anasa_add_module(
         AudioSimulator.hpp
         AudioSimulator.cpp
         AudioConstants.hpp
-        AudioQueue.hpp
         AudioSettings.hpp
         AudioTypes.hpp
 )

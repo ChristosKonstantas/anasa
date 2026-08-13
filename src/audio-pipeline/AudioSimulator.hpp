@@ -3,7 +3,7 @@
 
 #include <thread>
 
-#include "audio-pipeline/AudioQueue.hpp"
+#include "utils/queues/SpscQueue.hpp"
 #include "audio-pipeline/AudioSettings.hpp"
 #include "audio-pipeline/AudioTypes.hpp"
 #include "playback/PlaybackState.hpp"
@@ -13,7 +13,7 @@ namespace anasa
     class AudioSimulator
     {
     public:
-        AudioSimulator(AudioSettings settings, SharedState& sharedState, ReadyAudioQueue& readyAudioQueue);
+        AudioSimulator(AudioSettings settings, SharedState& sharedState, SpscQueue<AudioBlock>& readyAudioQueue);
         ~AudioSimulator();
 
         void                     start();
@@ -38,7 +38,7 @@ namespace anasa
         double                   _checksum;
         AudioState               _audioState;
         SharedState&             _sharedState;
-        ReadyAudioQueue&         _readyAudioQueue;
+        SpscQueue<AudioBlock>&  _readyAudioQueue;
     };
 } // namespace anasa
 

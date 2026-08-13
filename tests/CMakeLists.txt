@@ -5,6 +5,7 @@ if(BUILD_TESTS)
     # Here you should add any new test .cpp files
     set(TEST_SOURCES
         utils/queues/SpscQueueTests.cpp
+        audio-pipeline/AudioSimulatorTests.cpp
     )
 
     add_executable(AnasaTests ${TEST_SOURCES})
@@ -14,6 +15,8 @@ if(BUILD_TESTS)
                            PRIVATE 
                           Catch2::Catch2WithMain
                           queues
+                          audio-pipeline
+                          playback
     )
 
     source_group(

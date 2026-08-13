@@ -7,7 +7,7 @@
 TEST_CASE("SpscQueue: new queue is empty")
 {
     constexpr size_t queueCapacity = 4;
-    anasa::SpscQueue<int, queueCapacity> queue;
+    anasa::SpscQueue<int> queue(queueCapacity);
 
     REQUIRE(queue.isEmpty());
     REQUIRE(queue.usableCapacity() == queueCapacity - 1);
@@ -21,7 +21,7 @@ TEST_CASE("SpscQueue: new queue is empty")
 TEST_CASE("SpscQueue: push and pop one element")
 {
     constexpr size_t queueCapacity = 4;
-    anasa::SpscQueue<int, queueCapacity> queue;
+    anasa::SpscQueue<int> queue(queueCapacity);
 
     REQUIRE(queue.push(42));
     REQUIRE_FALSE(queue.isEmpty());
@@ -37,7 +37,7 @@ TEST_CASE("SpscQueue: push and pop one element")
 TEST_CASE("SpscQueue: elements are popped in FIFO order")
 {
     constexpr size_t queueCapacity = 5;
-    anasa::SpscQueue<int, queueCapacity> queue;
+    anasa::SpscQueue<int> queue(queueCapacity);
 
     REQUIRE(queue.push(10));
     REQUIRE(queue.push(20));
@@ -63,7 +63,7 @@ TEST_CASE("SpscQueue: one slot is reserved")
     // Physical capacity = 4
     // Usable capacity   = 3
     constexpr size_t queueCapacity = 4;
-    anasa::SpscQueue<int, queueCapacity> queue;
+    anasa::SpscQueue<int> queue(queueCapacity);
 
     REQUIRE(queue.usableCapacity() == queueCapacity - 1);
 
@@ -87,7 +87,7 @@ TEST_CASE("SpscQueue: one slot is reserved")
 TEST_CASE("SpscQueue: peek does not remove element")
 {
     constexpr size_t queueCapacity = 4;
-    anasa::SpscQueue<int, queueCapacity> queue;
+    anasa::SpscQueue<int> queue(queueCapacity);
 
     REQUIRE(queue.push(1));
 
@@ -115,7 +115,7 @@ TEST_CASE("SpscQueue: peek does not remove element")
 TEST_CASE("SpscQueue: indices wrap around correctly")
 {
     constexpr size_t queueCapacity = 7;
-    anasa::SpscQueue<int, queueCapacity> queue;
+    anasa::SpscQueue<int> queue(queueCapacity);
 
     // Fill usable slots:
     // w/r              
@@ -182,7 +182,7 @@ TEST_CASE("SpscQueue: indices wrap around correctly")
 TEST_CASE("SpscQueue: full queue becomes writable after pop")
 {
     constexpr size_t queueCapacity = 3;
-    anasa::SpscQueue<int, queueCapacity> queue;
+    anasa::SpscQueue<int> queue(queueCapacity);
 
     // Usable capacity is only 2.
     REQUIRE(queue.push(10));
@@ -210,7 +210,7 @@ TEST_CASE("SpscQueue: full queue becomes writable after pop")
 TEST_CASE("SpscQueue: repeated wrap-around preserves FIFO order")
 {
     constexpr size_t queueCapacity = 4;
-    anasa::SpscQueue<int, queueCapacity> queue;
+    anasa::SpscQueue<int> queue(queueCapacity);
 
     int expected = 0;
 
@@ -241,7 +241,7 @@ TEST_CASE("SpscQueue: reports full state")
 {
     constexpr size_t queueCapacity = 4;
 
-    anasa::SpscQueue<int, queueCapacity> queue;
+    anasa::SpscQueue<int> queue(queueCapacity);
 
     REQUIRE_FALSE(queue.isFull());
 
@@ -264,7 +264,7 @@ TEST_CASE("SpscQueue: producer and consumer can operate concurrently")
 {
     constexpr size_t itemCount = 100000;
     constexpr size_t queueCapacity = 128;
-    anasa::SpscQueue<int, queueCapacity> queue;
+    anasa::SpscQueue<int> queue(queueCapacity);
 
     std::vector<int> received;
     received.reserve(itemCount); // only capacity changes to itemCount and size is 0 now
