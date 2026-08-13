@@ -36,7 +36,7 @@ class SpscQueue
             if (read == _write.load(std::memory_order_acquire))
                 return false;
 
-            item = _data[read];
+            item = _data[read]; // copy
             _read.store((read + 1) % capacity, std::memory_order_release);
             return true;
         }
@@ -49,7 +49,7 @@ class SpscQueue
             if (read == _write.load(std::memory_order_acquire))
                 return false;
 
-            item = _data[read];
+            item = _data[read]; // copy
             return true;
         }
 
@@ -64,6 +64,14 @@ class SpscQueue
             return read == _write.load(std::memory_order_acquire);
         }
 
+        bool isFull() const
+        {
+            const size_t write = _write.load(std::memory_order_relaxed);
+            const size_t next = (write + 1) % capacity;
+
+            return next == _read.load(std::memory_order_acquire);
+        }
+        
     private:
         std::array<T, capacity> _data{};
         std::atomic<size_t> _write{0};

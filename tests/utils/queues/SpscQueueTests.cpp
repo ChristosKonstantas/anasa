@@ -127,6 +127,7 @@ TEST_CASE("SpscQueue: indices wrap around correctly")
     REQUIRE(queue.push(4));
     REQUIRE(queue.push(5));
     REQUIRE(queue.push(6));
+    REQUIRE(queue.isFull());
 
     int value = 0;
 
@@ -148,11 +149,15 @@ TEST_CASE("SpscQueue: indices wrap around correctly")
     REQUIRE(queue.pop(value));
     REQUIRE(value == 5);
 
+    REQUIRE_FALSE(queue.isFull());
+
     // _read and _write will now eventually wrap around.
     //        w        r
     // [6][7][_][_][_][6][X]
     REQUIRE(queue.push(6));
     REQUIRE(queue.push(7));
+
+    REQUIRE_FALSE(queue.isFull());
 
     // Logical queue contents should now be:
     //
@@ -170,6 +175,7 @@ TEST_CASE("SpscQueue: indices wrap around correctly")
     //       w/r        
     // [_][_][_][_][_][_][X]
     REQUIRE(queue.isEmpty());
+    REQUIRE_FALSE(queue.isFull());
 }
 
 
@@ -231,6 +237,28 @@ TEST_CASE("SpscQueue: repeated wrap-around preserves FIFO order")
     }
 }
 
+TEST_CASE("SpscQueue: reports full state")
+{
+    constexpr size_t queueCapacity = 4;
+
+    anasa::SpscQueue<int, queueCapacity> queue;
+
+    REQUIRE_FALSE(queue.isFull());
+
+    REQUIRE(queue.push(1));
+    REQUIRE_FALSE(queue.isFull());
+
+    REQUIRE(queue.push(2));
+    REQUIRE_FALSE(queue.isFull());
+
+    REQUIRE(queue.push(3));
+    REQUIRE(queue.isFull());
+
+    int value = 0;
+
+    REQUIRE(queue.pop(value));
+    REQUIRE_FALSE(queue.isFull());
+}
 
 TEST_CASE("SpscQueue: producer and consumer can operate concurrently")
 {
