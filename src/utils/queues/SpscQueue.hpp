@@ -12,7 +12,7 @@ namespace anasa
 // One slot stays empty so full and empty are easy to distinguish.
 // capacity, _read and _write are size_t: they can reach max possible object size in memory 
 template <typename T, typename Alloc = std::allocator<T>>
-class SpscQueue : private Alloc
+class SpscQueue : private Alloc // Empty Base Optimization
 {
     public:
         explicit SpscQueue(std::size_t capacity, Alloc const& alloc = Alloc{})
@@ -46,9 +46,10 @@ class SpscQueue : private Alloc
             if (next == _read.load(std::memory_order_acquire))
                 return false;
 
-            std::allocator_traits<Alloc>::construct(*this, &_data[write], item);
+            std::allocator_traits<Alloc>::construct(*this, &_data[write], item); // new (&_data[_write % _capacity]) T(item); - copy construct the value
 
             _write.store(next, std::memory_order_release);
+            
             return true;
         }
 
@@ -59,9 +60,9 @@ class SpscQueue : private Alloc
             if (read == _write.load(std::memory_order_acquire))
                 return false;
 
-            item = _data[read];
+            item = _data[read]; // copy construct value
             
-            std::allocator_traits<Alloc>::destroy(*this, &_data[read]);
+            std::allocator_traits<Alloc>::destroy(*this, &_data[read]); // destroy the instance that was in &_data[read]
 
             _read.store((read + 1) % _capacity, std::memory_order_release);
         

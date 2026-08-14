@@ -27,5 +27,8 @@ if(BUILD_TESTS)
 
     include(Catch)
     catch_discover_tests(AnasaTests)
-
+    
+    if(BENCHMARKS)
+        target_compile_definitions(AnasaTests PRIVATE enable_benchmarks)
+    endif()
 endif()

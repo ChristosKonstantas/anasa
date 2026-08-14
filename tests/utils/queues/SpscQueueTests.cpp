@@ -3,6 +3,8 @@
 
 #include <thread>
 #include <vector>
+#include <chrono>
+#include <iostream>
 
 TEST_CASE("SpscQueue: new queue is empty")
 {
@@ -309,3 +311,57 @@ TEST_CASE("SpscQueue: producer and consumer can operate concurrently")
 
     REQUIRE(queue.isEmpty());
 }
+
+#ifdef enable_benchmarks
+TEST_CASE("SpscQueue throughput (benchmark)")
+{
+    constexpr std::size_t queueCapacity = 1024;
+
+    constexpr std::size_t operationPairs = 1000000;
+    constexpr std::size_t count = 50;
+
+    anasa::SpscQueue<int> queue{queueCapacity};
+
+    int output = 0;
+
+    // Warm-up: do not measure this.
+    for (std::size_t i = 0; i < 100'000; ++i)
+    {
+        queue.push(42);
+        queue.pop(output);
+    }
+
+    using Clock = std::chrono::steady_clock;
+
+    double sumSeconds = 0.0;
+
+    for (std::size_t c = 0; c < count; ++c)
+    {
+        const auto start = Clock::now();
+
+        for (std::size_t i = 0; i < operationPairs; ++i)
+        {
+            queue.push(42);
+            queue.pop(output);
+        }
+
+        const auto end = Clock::now();
+
+        const double seconds = std::chrono::duration<double>(end - start).count();
+
+        sumSeconds += seconds;
+    }
+
+    const double meanSecondsPerSample = sumSeconds / static_cast<double>(count);
+
+    // Each iteration performs:
+    // 1 push + 1 pop, therefore 2 queue operations.
+    
+    constexpr std::size_t operationsPerSample = operationPairs * 2;
+
+    const double meanOperationsPerSecond = static_cast<double>(operationsPerSample) / meanSecondsPerSample;
+
+    std::cout<< "\nSpscQueue throughput\n" << "Mean: " << meanOperationsPerSecond / 1000000.0f << " M ops/sec\n";
+}
+
+#endif //enable_benchmarks

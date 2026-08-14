@@ -10,8 +10,19 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 option(BUILD_TESTS "Build unit tests" OFF)
 
+include(CMakeDependentOption)
+
+cmake_dependent_option(
+    BENCHMARKS
+    "Enable benchmark test cases"
+    OFF
+    "BUILD_TESTS"
+    OFF
+)
+
 # Anasa CMake helpers
 include(${CMAKE_SOURCE_DIR}/cmake/AnasaModule.cmake)
+
 
 # External dependencies
 if(BUILD_TESTS)
