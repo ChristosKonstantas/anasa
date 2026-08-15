@@ -38,7 +38,7 @@ namespace anasa
         double                   _checksum;
         AudioState               _audioState;
         SharedState&             _sharedState;
-        SpscQueue<AudioBlock>&  _readyAudioQueue;
+        SpscQueue<AudioBlock>&   _readyAudioQueue;
     };
 } // namespace anasa
 

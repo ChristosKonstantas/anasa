@@ -315,17 +315,18 @@ TEST_CASE("SpscQueue: producer and consumer can operate concurrently")
 #ifdef enable_benchmarks
 TEST_CASE("SpscQueue throughput (benchmark)")
 {
-    constexpr std::size_t queueCapacity = 1024;
+    // more ops / sec -> faster
+    constexpr std::size_t queueCapacity = 8192;
 
-    constexpr std::size_t operationPairs = 1000000;
-    constexpr std::size_t count = 50;
+    constexpr std::size_t operationPairs = 10000000;
+    constexpr std::size_t count = 100;
 
     anasa::SpscQueue<int> queue{queueCapacity};
 
     int output = 0;
 
-    // Warm-up: do not measure this.
-    for (std::size_t i = 0; i < 100'000; ++i)
+    // Warm-up
+    for (std::size_t i = 0; i < 100000; ++i)
     {
         queue.push(42);
         queue.pop(output);
@@ -356,10 +357,7 @@ TEST_CASE("SpscQueue throughput (benchmark)")
 
     // Each iteration performs:
     // 1 push + 1 pop, therefore 2 queue operations.
-    
-    constexpr std::size_t operationsPerSample = operationPairs * 2;
-
-    const double meanOperationsPerSecond = static_cast<double>(operationsPerSample) / meanSecondsPerSample;
+    const double meanOperationsPerSecond = static_cast<double>(operationPairs * 2) / meanSecondsPerSample;
 
     std::cout<< "\nSpscQueue throughput\n" << "Mean: " << meanOperationsPerSecond / 1000000.0f << " M ops/sec\n";
 }
