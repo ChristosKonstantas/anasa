@@ -8,11 +8,11 @@
 
 TEST_CASE("SpscQueue: new queue is empty")
 {
-    constexpr size_t queueCapacity = 4;
+    constexpr size_t queueCapacity = 3;
     anasa::SpscQueue<int> queue(queueCapacity);
 
     REQUIRE(queue.isEmpty());
-    REQUIRE(queue.usableCapacity() == queueCapacity - 1);
+    REQUIRE(queue.capacity() == queueCapacity);
 
     int value = 0;
     REQUIRE_FALSE(queue.pop(value));
@@ -22,7 +22,7 @@ TEST_CASE("SpscQueue: new queue is empty")
 
 TEST_CASE("SpscQueue: push and pop one element")
 {
-    constexpr size_t queueCapacity = 4;
+    constexpr size_t queueCapacity = 3;
     anasa::SpscQueue<int> queue(queueCapacity);
 
     REQUIRE(queue.push(42));
@@ -38,7 +38,7 @@ TEST_CASE("SpscQueue: push and pop one element")
 
 TEST_CASE("SpscQueue: elements are popped in FIFO order")
 {
-    constexpr size_t queueCapacity = 5;
+    constexpr size_t queueCapacity = 4;
     anasa::SpscQueue<int> queue(queueCapacity);
 
     REQUIRE(queue.push(10));
@@ -62,12 +62,12 @@ TEST_CASE("SpscQueue: elements are popped in FIFO order")
 
 TEST_CASE("SpscQueue: one slot is reserved")
 {
-    // Physical capacity = 4
+    // Physical capacity = 3
     // Usable capacity   = 3
-    constexpr size_t queueCapacity = 4;
+    constexpr size_t queueCapacity = 3;
     anasa::SpscQueue<int> queue(queueCapacity);
 
-    REQUIRE(queue.usableCapacity() == queueCapacity - 1);
+    REQUIRE(queue.capacity() == queueCapacity);
 
     REQUIRE(queue.push(1));
     REQUIRE(queue.push(2));
@@ -88,7 +88,7 @@ TEST_CASE("SpscQueue: one slot is reserved")
 
 TEST_CASE("SpscQueue: peek does not remove element")
 {
-    constexpr size_t queueCapacity = 4;
+    constexpr size_t queueCapacity = 3;
     anasa::SpscQueue<int> queue(queueCapacity);
 
     REQUIRE(queue.push(1));
@@ -116,12 +116,12 @@ TEST_CASE("SpscQueue: peek does not remove element")
 
 TEST_CASE("SpscQueue: indices wrap around correctly")
 {
-    constexpr size_t queueCapacity = 7;
+    constexpr size_t queueCapacity = 6;
     anasa::SpscQueue<int> queue(queueCapacity);
 
     // Fill usable slots:
     // w/r              
-    // [1][2][3][4][5][6][X]
+    // [1][2][3][4][5][6]
     //
     REQUIRE(queue.push(1));
     REQUIRE(queue.push(2));
@@ -135,7 +135,7 @@ TEST_CASE("SpscQueue: indices wrap around correctly")
 
     // Free 5 slots.
     //  w              r
-    // [_][_][_][_][_][6][X]
+    // [_][_][_][_][_][6]
     REQUIRE(queue.pop(value));
     REQUIRE(value == 1);
 
@@ -155,7 +155,7 @@ TEST_CASE("SpscQueue: indices wrap around correctly")
 
     // _read and _write will now eventually wrap around.
     //        w        r
-    // [6][7][_][_][_][6][X]
+    // [6][7][_][_][_][6]
     REQUIRE(queue.push(6));
     REQUIRE(queue.push(7));
 
@@ -175,7 +175,7 @@ TEST_CASE("SpscQueue: indices wrap around correctly")
     REQUIRE(value == 7);
     // _read and _write will now eventually wrap around.
     //       w/r        
-    // [_][_][_][_][_][_][X]
+    // [_][_][_][_][_][_]
     REQUIRE(queue.isEmpty());
     REQUIRE_FALSE(queue.isFull());
 }
@@ -183,7 +183,7 @@ TEST_CASE("SpscQueue: indices wrap around correctly")
 
 TEST_CASE("SpscQueue: full queue becomes writable after pop")
 {
-    constexpr size_t queueCapacity = 3;
+    constexpr size_t queueCapacity = 2;
     anasa::SpscQueue<int> queue(queueCapacity);
 
     // Usable capacity is only 2.
@@ -211,7 +211,7 @@ TEST_CASE("SpscQueue: full queue becomes writable after pop")
 
 TEST_CASE("SpscQueue: repeated wrap-around preserves FIFO order")
 {
-    constexpr size_t queueCapacity = 4;
+    constexpr size_t queueCapacity = 3;
     anasa::SpscQueue<int> queue(queueCapacity);
 
     int expected = 0;
@@ -241,7 +241,7 @@ TEST_CASE("SpscQueue: repeated wrap-around preserves FIFO order")
 
 TEST_CASE("SpscQueue: reports full state")
 {
-    constexpr size_t queueCapacity = 4;
+    constexpr size_t queueCapacity = 3;
 
     anasa::SpscQueue<int> queue(queueCapacity);
 
@@ -316,7 +316,7 @@ TEST_CASE("SpscQueue: producer and consumer can operate concurrently")
 TEST_CASE("SpscQueue throughput (benchmark)")
 {
     // more ops / sec -> faster
-    constexpr std::size_t queueCapacity = 8192;
+    constexpr std::size_t queueCapacity = 4*8192;
 
     constexpr std::size_t operationPairs = 10000000;
     constexpr std::size_t count = 100;

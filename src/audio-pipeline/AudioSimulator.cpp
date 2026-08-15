@@ -142,7 +142,7 @@ namespace anasa
 
         AudioBlock head; // Temporary object for examining the spsc queue head
         // Remove outdated blocks without locks. Work is bounded by queue capacity.
-        for (int i = 0; i < _readyAudioQueue.usableCapacity(); ++i) 
+        for (int i = 0; i < _readyAudioQueue.capacity(); ++i) 
         {
             // peek() copies the head without removing it
             if (!_readyAudioQueue.peek(head))

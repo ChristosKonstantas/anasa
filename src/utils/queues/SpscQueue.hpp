@@ -7,20 +7,21 @@
 
 namespace anasa
 {
-
 // One producer and one consumer only.
-// One slot stays empty so full and empty are easy to distinguish.
+// _write and _read are monotonically increasing logical cursors.
 // capacity, _read and _write are size_t: they can reach max possible object size in memory 
 template <typename T, typename Alloc = std::allocator<T>>
 class SpscQueue : private Alloc // Empty Base Optimization
-{
+{        
+    static_assert(std::atomic<std::size_t>::is_always_lock_free, "SpscQueue requires lock-free size_t atomics");
+    
     public:
         explicit SpscQueue(std::size_t capacity, Alloc const& alloc = Alloc{})
             : Alloc{alloc}, 
               _capacity(capacity),
               _data{std::allocator_traits<Alloc>::allocate(*this, _capacity)}
         {
-            assert(_capacity > 1);
+            assert(_capacity > 0);
         }
 
         ~SpscQueue()
@@ -29,10 +30,10 @@ class SpscQueue : private Alloc // Empty Base Optimization
 
             const std::size_t write = _write.load(std::memory_order_relaxed);
 
-            while (read != write)
+            while (read != write) // notEmpty
             {
-                std::allocator_traits<Alloc>::destroy(*this, &_data[read]);
-                read = (read + 1) % _capacity;
+                std::allocator_traits<Alloc>::destroy(*this, element(read));
+                ++read;
             }
 
             std::allocator_traits<Alloc>::deallocate(*this, _data, _capacity);
@@ -40,31 +41,35 @@ class SpscQueue : private Alloc // Empty Base Optimization
 
         bool push(const T& item)
         {
-            std::size_t write = _write.load(std::memory_order_relaxed);
-            std::size_t next = (write + 1) % _capacity;
+            const std::size_t write = _write.load(std::memory_order_relaxed);
+            const std::size_t read  = _read.load(std::memory_order_acquire);
 
-            if (next == _read.load(std::memory_order_acquire))
+            if (isFull(write, read))
                 return false;
 
-            std::allocator_traits<Alloc>::construct(*this, &_data[write], item); // new (&_data[_write % _capacity]) T(item); - copy construct the value
+            std::allocator_traits<Alloc>::construct(*this, element(write), item); // new (&_data[_write % _capacity]) T(item); - copy construct the value
 
-            _write.store(next, std::memory_order_release);
+            _write.store(write + 1, std::memory_order_release);
             
             return true;
         }
 
         bool pop(T& item)
         {
-            std::size_t read = _read.load(std::memory_order_relaxed);
+            const std::size_t read =  _read.load(std::memory_order_relaxed);
 
-            if (read == _write.load(std::memory_order_acquire))
+            const std::size_t write = _write.load(std::memory_order_acquire);
+
+            if (isEmpty(write, read))
                 return false;
 
-            item = _data[read]; // copy construct value
-            
-            std::allocator_traits<Alloc>::destroy(*this, &_data[read]); // destroy the instance that was in &_data[read]
+            T* current = element(read);
 
-            _read.store((read + 1) % _capacity, std::memory_order_release);
+            item = *current; // copy assignment
+            
+            std::allocator_traits<Alloc>::destroy(*this, current); // destroy the instance that was in &_data[read]
+
+            _read.store(read + 1, std::memory_order_release);
         
             return true;
         }
@@ -77,33 +82,62 @@ class SpscQueue : private Alloc // Empty Base Optimization
             if (read == _write.load(std::memory_order_acquire))
                 return false;
 
-            item = _data[read]; // copy
+            item = *element(read);
+
             return true;
         }
 
-        std::size_t usableCapacity() const
+        std::size_t capacity() const
         {
-            return _capacity - 1;
+            return _capacity;
         }
 
         bool isEmpty() const
         {
-            std::size_t read = _read.load(std::memory_order_relaxed);
-            return read == _write.load(std::memory_order_acquire);
+            const std::size_t read  = _read.load(std::memory_order_relaxed);
+
+            const std::size_t write = _write.load(std::memory_order_acquire);
+
+            return isEmpty(write, read);
         }
 
         bool isFull() const
         {
             const std::size_t write = _write.load(std::memory_order_relaxed);
-            const std::size_t next = (write + 1) % _capacity;
 
-            return next == _read.load(std::memory_order_acquire);
+            const std::size_t read =  _read.load(std::memory_order_acquire);
+
+            return isFull(write, read);
         }
 
     private:
+
+        bool isFull(std::size_t write, std::size_t read) const
+        {
+            return write - read == _capacity;
+        }
+
+        static bool isEmpty(std::size_t write, std::size_t read)
+        {
+            return write == read;
+        }
+
+        T* element(std::size_t cursor)
+        {
+            return &_data[cursor % _capacity];
+        }
+
+        const T* element(std::size_t cursor) const
+        {
+            return &_data[cursor % _capacity];
+        }
+
         std::size_t               _capacity;
         T*                        _data{}; // heap storage for T objects
+
+        alignas(std::hardware_destructive_interference_size)
         std::atomic<std::size_t>  _write{0};
+        alignas(std::hardware_destructive_interference_size)
         std::atomic<std::size_t>  _read{0};
 };
 
