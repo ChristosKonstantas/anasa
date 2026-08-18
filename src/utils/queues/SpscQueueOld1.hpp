@@ -1,24 +1,15 @@
-#ifndef SPSC_QUEUE_HPP
-#define SPSC_QUEUE_HPP
+#ifndef SPSC_QUEUE_OLD1_HPP
+#define SPSC_QUEUE_OLD1_HPP
 
 #include <atomic>
 #include <memory>
-#include <new>
-#include <utility>
-#include <stdexcept>
+#include <cassert>
 
-namespace anasa
+namespace anasa::old1
 {
-/*
-
- * One producer and one consumer only.
- * _write and _read are monotonically increasing logical cursors.
- * capacity, _read and _write are size_t: they can reach max possible object size in memory 
-
- * For more information check out this talk
- * https://www.youtube.com/watch?v=K3P_Lmq6pw0&t=764s
-
-*/
+// One producer and one consumer only.
+// _write and _read are monotonically increasing logical cursors.
+// capacity, _read and _write are size_t: they can reach max possible object size in memory 
 template <typename T, typename Alloc = std::allocator<T>>
 class SpscQueue : private Alloc // Empty Base Optimization
 {        
@@ -27,16 +18,15 @@ class SpscQueue : private Alloc // Empty Base Optimization
     public:
         explicit SpscQueue(std::size_t capacity, Alloc const& alloc = Alloc{})
             : Alloc{alloc}, 
-              _capacity(validateCapacity(capacity)),
-              _powerOfTwo(isPowerOfTwo(_capacity)),
-              _mask(_capacity - 1),
+              _capacity(capacity),
               _data{std::allocator_traits<Alloc>::allocate(*this, _capacity)}
         {
+            assert(_capacity > 0);
+
+            std::size_t constructed = 0;
 
             /* Preconstruct all queue slots */
             /* If construction fails, destroy completed objects and release the allocated storage. */
-
-            std::size_t constructed = 0;
             try
             {
                 for (; constructed < _capacity; ++constructed)
@@ -61,9 +51,7 @@ class SpscQueue : private Alloc // Empty Base Optimization
             std::allocator_traits<Alloc>::deallocate(*this, _data, _capacity);
         }
 
-        /* Gives the producer access to the preconstructed queue-owned object before publishing it. */
-        template <typename Fill>
-        bool pushWith(Fill&& fill)
+        bool push(const T& item)
         {
             const std::size_t write = _write.load(std::memory_order_relaxed);
             const std::size_t read  = _read.load(std::memory_order_acquire);
@@ -71,48 +59,38 @@ class SpscQueue : private Alloc // Empty Base Optimization
             if (isFull(write, read))
                 return false;
 
-            std::forward<Fill>(fill)(*element(write));
+            *element(write) = item; // copy assignment into preconstructed slot
 
             _write.store(write + 1, std::memory_order_release);
-
+            
             return true;
         }
 
-        /* Returns the queue-owned front object. Valid until pop() is called by the consumer. */
-        T* front()
+        bool pop(T& item)
         {
-            const std::size_t read = _read.load(std::memory_order_relaxed);
+            const std::size_t read =  _read.load(std::memory_order_relaxed);
 
-            const std::size_t write = _write.load(std::memory_order_acquire);
-
-            if (isEmpty(write, read))
-                return nullptr;
-
-            return element(read);
-        }
-
-        const T* front() const
-        {
-            const std::size_t read = _read.load(std::memory_order_relaxed);
-
-            const std::size_t write = _write.load(std::memory_order_acquire);
-
-            if (isEmpty(write, read))
-                return nullptr;
-
-            return element(read);
-        }
-
-        /* Consumes the front object without copying it. */
-        bool pop()
-        {
-            const std::size_t read = _read.load(std::memory_order_relaxed);
             const std::size_t write = _write.load(std::memory_order_acquire);
 
             if (isEmpty(write, read))
                 return false;
 
+            item = *element(read); // copy assignment
+
             _read.store(read + 1, std::memory_order_release);
+        
+            return true;
+        }
+
+        bool peek(T& item) const
+        {
+            /* Returns the front element but leaves it in the queue */
+            std::size_t read = _read.load(std::memory_order_relaxed);
+
+            if (read == _write.load(std::memory_order_acquire))
+                return false;
+
+            item = *element(read);
 
             return true;
         }
@@ -124,7 +102,7 @@ class SpscQueue : private Alloc // Empty Base Optimization
 
         bool isEmpty() const
         {
-            const std::size_t read =  _read.load(std::memory_order_relaxed);
+            const std::size_t read  = _read.load(std::memory_order_relaxed);
 
             const std::size_t write = _write.load(std::memory_order_acquire);
 
@@ -154,36 +132,15 @@ class SpscQueue : private Alloc // Empty Base Optimization
 
         T* element(std::size_t cursor)
         {
-            if (_powerOfTwo)
-                return &_data[cursor & _mask]; // & is cheaper but capacity should be power of 2
-
             return &_data[cursor % _capacity];
         }
 
         const T* element(std::size_t cursor) const
         {
-            if (_powerOfTwo)
-                return &_data[cursor & _mask]; // & is cheaper but capacity should be power of 2
-
             return &_data[cursor % _capacity];
-        }
-        
-        static bool isPowerOfTwo(std::size_t value)
-        {
-            return value != 0 && (value & (value - 1)) == 0;
-        }
-
-        static std::size_t validateCapacity(std::size_t capacity)
-        {
-            if (capacity == 0)
-                throw std::invalid_argument("SpscQueue capacity must be greater than zero");
-
-            return capacity;
         }
 
         std::size_t               _capacity;
-        const bool                _powerOfTwo;
-        const std::size_t         _mask;
         T*                        _data{}; // heap storage for T objects
 
         alignas(std::hardware_destructive_interference_size)
@@ -192,6 +149,6 @@ class SpscQueue : private Alloc // Empty Base Optimization
         std::atomic<std::size_t>  _read{0};
 };
 
-} // namespace anasa
+} // namespace anasa::old1
 
-#endif // SPSC_QUEUE_HPP
+#endif // SPSC_QUEUE_OLD1_HPP

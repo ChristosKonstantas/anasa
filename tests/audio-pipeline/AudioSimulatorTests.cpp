@@ -43,16 +43,24 @@ namespace anasa
     {
         for (int blockIndex = 0; blockIndex < blockCount; ++blockIndex)
         {
-            AudioBlock block;
+            REQUIRE
+            (
+                queue.pushWith
+                (
+                    [&](AudioBlock& block)
+                    {
+                        block.generation = generation;
 
-            block.generation = generation;
-            block.firstFrame = blockIndex * settings.audioBlockFrames;
-            block.frameCount = settings.audioBlockFrames;
+                        block.firstFrame = blockIndex * settings.audioBlockFrames;
 
-            for (int i = 0; i < block.frameCount; ++i)
-                block.samples[i] = 0.5f;
-            
-            REQUIRE(queue.push(block));
+                        block.frameCount = settings.audioBlockFrames;
+
+                        for (int i = 0; i < block.frameCount; ++i)
+                            block.samples[i] = 0.5f;
+
+                    }
+                )
+            );
         }
     }
 
