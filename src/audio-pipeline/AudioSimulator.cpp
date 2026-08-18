@@ -131,7 +131,7 @@ namespace anasa
     void AudioSimulator::audioCallback() 
     {
         // Read the current stream generation
-        int globalGeneration = _sharedState.generation.load(std::memory_order_acquire);
+        const int globalGeneration = _sharedState.generation.load(std::memory_order_acquire);
 
         // A seek or live edit starts a new published audio stream
         if (_audioState.generation != globalGeneration) // detect a seek or edit
@@ -140,22 +140,26 @@ namespace anasa
             _audioState.expectedBlockStartFrame = alignToAudioBlock(_sharedState.targetFrame.load(std::memory_order_acquire));
         }
 
-        AudioBlock head; // Temporary object for examining the spsc queue head
+        const AudioBlock* head = nullptr;
         // Remove outdated blocks without locks. Work is bounded by queue capacity.
-        for (int i = 0; i < _readyAudioQueue.capacity(); ++i) 
+        for (std::size_t i = 0; i < _readyAudioQueue.capacity(); ++i) 
         {
-            // peek() copies the head without removing it
-            if (!_readyAudioQueue.peek(head))
+            head = _readyAudioQueue.front();
+
+            if (head == nullptr)
                 break;
             
-            bool outdatedGeneration = head.generation < globalGeneration;
-            bool oldFrame = head.generation == globalGeneration && head.firstFrame < _audioState.expectedBlockStartFrame;
-            bool headNotOutdated = !outdatedGeneration && !oldFrame;
+            const bool outdatedGeneration = head->generation < globalGeneration;
+            const bool oldFrame = head->generation == globalGeneration && head->firstFrame < _audioState.expectedBlockStartFrame;
+            const bool headNotOutdated = !outdatedGeneration && !oldFrame;
             
             if (headNotOutdated)
                 break;
 
-            _readyAudioQueue.pop(head);
+            _readyAudioQueue.pop();
+
+            // pop() destroyed the object head pointed to
+            head = nullptr;
         }
         // If playback is paused or the engine is rebuffering, the callback returns
         if (!_sharedState.playing.load(std::memory_order_acquire))
@@ -164,10 +168,10 @@ namespace anasa
         ++_callbacks;
 
         const bool isExactBlock =
-            _readyAudioQueue.peek(head) &&
-            head.generation == globalGeneration &&
-            head.firstFrame == _audioState.expectedBlockStartFrame &&
-            head.frameCount == _settings.audioBlockFrames;
+            head!=nullptr &&
+            head->generation == globalGeneration &&
+            head->firstFrame == _audioState.expectedBlockStartFrame &&
+            head->frameCount == _settings.audioBlockFrames;
             
         if (!isExactBlock) 
         {
@@ -177,15 +181,20 @@ namespace anasa
         }
         else
         {
-            _readyAudioQueue.pop(head); // consume the exact block and remove from the queue
-            // The project has no real audio device so it can't send the samples to speakers
-            // therefore we use _checksum to show that we consume audio data
-            // and prevent compiler from treating the rendered samples as entirely unused
-            for (int i = 0; i < head.frameCount; ++i)
+            // IMPORTANT:
+            // Use the queue-owned AudioBlock BEFORE pop().
+            for (int i = 0; i < head->frameCount; ++i)
             {
-                const float sample = head.samples[i];
+                const float sample = head->samples[i];
+
                 _checksum += static_cast<double>(sample) * sample;
             }
+
+            // We are completely finished with head.
+            // pop() destroys the AudioBlock and allows the producer
+            // to reuse this queue slot.
+            _readyAudioQueue.pop();
+
         }
         
         // Advance the audio timeline

@@ -10,6 +10,12 @@ if(BUILD_TESTS)
 
     add_executable(AnasaTests ${TEST_SOURCES})
 
+    if(BENCHMARKS)
+        target_compile_definitions(AnasaTests PRIVATE enable_benchmarks)
+        add_subdirectory(benchmarks)
+        target_link_libraries(AnasaTests PRIVATE benchmarks)
+    endif()
+    
     # Here you should add any new declared interface
     target_link_libraries(AnasaTests
                            PRIVATE 
@@ -24,11 +30,9 @@ if(BUILD_TESTS)
         PREFIX "Tests"
         FILES ${TEST_SOURCES}
     )
+    
+   
 
     include(Catch)
     catch_discover_tests(AnasaTests)
-    
-    if(BENCHMARKS)
-        target_compile_definitions(AnasaTests PRIVATE enable_benchmarks)
-    endif()
 endif()
