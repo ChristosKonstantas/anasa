@@ -6,6 +6,8 @@
 #include "utils/queues/SpscQueue.hpp"
 #include "audio-pipeline/AudioSimulator.hpp"
 #include "playback/PlaybackState.hpp"
+#include "render/VersionTable.hpp"
+#include "render/RenderConstants.hpp"
 
 namespace anasa
 {
@@ -20,6 +22,9 @@ namespace anasa
 
     private:
         EngineSettings                   _settings;
+        int                              _totalFrames;
+        int                              _chunkCount;
+        VersionTable                     _versionTable;
 
         // --- (1) Simulated real-time audio thread.  ---// 
         SharedState                      _sharedState;
