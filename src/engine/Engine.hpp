@@ -1,7 +1,6 @@
 #ifndef ENGINE_HPP
 #define ENGINE_HPP
 
-#include "engine/EngineTypes.hpp"
 #include "engine/EngineSettings.hpp"
 #include "utils/queues/SpscQueue.hpp"
 #include "audio-pipeline/AudioSimulator.hpp"
