@@ -1,8 +1,6 @@
 #ifndef ENGINE_HPP
 #define ENGINE_HPP
 
-#include <memory>
-
 #include "engine/EngineTypes.hpp"
 #include "engine/EngineSettings.hpp"
 #include "utils/queues/SpscQueue.hpp"
@@ -21,8 +19,9 @@ namespace anasa
         void stop();
 
     private:
+        EngineSettings                   _settings;
 
-        // (1) Simulated real-time audio thread.
+        // --- (1) Simulated real-time audio thread.  ---// 
         SharedState                      _sharedState;
         SpscQueue<AudioBlock>            _readyAudioQueue;
         AudioSimulator                   _audioSimulator;

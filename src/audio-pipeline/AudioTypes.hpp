@@ -22,8 +22,6 @@ namespace anasa
         int generation = 0;
         int expectedBlockStartFrame = 0;
     };
-
-
 } // namespace anasa
 
 #endif // AUDIO_TYPES_HPP

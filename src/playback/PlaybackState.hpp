@@ -2,7 +2,6 @@
 #ifndef PLAYBACK_TYPES_HPP
 #define PLAYBACK_TYPES_HPP
 
-#include <array>
 #include <atomic>
 
 namespace anasa

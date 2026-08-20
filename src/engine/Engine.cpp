@@ -4,7 +4,8 @@ namespace anasa
 {
 
     Engine::Engine(EngineSettings settings)
-        :_sharedState(),
+        :_settings(settings),
+         _sharedState(),
          _readyAudioQueue(READY_AUDIO_QUEUE_SLOTS),
          _audioSimulator(settings.audio, _sharedState, _readyAudioQueue),
          _started(false)
