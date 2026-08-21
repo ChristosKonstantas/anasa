@@ -383,6 +383,7 @@ TEST_CASE("SpscQueue transfers objects without copy or move")
     REQUIRE(queue.pop());
 }
 
+#ifdef enable_benchmarks
 constexpr std::size_t QueueCapacity = 64;
 constexpr int AudioBlockFrames = 64;
 
@@ -406,7 +407,6 @@ double consumeAudioBlock(const anasa::AudioBlock& block)
     return checksum;
 }
 
-#ifdef enable_benchmarks
 TEST_CASE("SpscQueue AudioBlock implementation comparison")
 {
     constexpr std::size_t transfersPerRound = 1000000;
