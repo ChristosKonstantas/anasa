@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <atomic>
+#include <stdexcept>
 #include <cassert>
 
 namespace anasa

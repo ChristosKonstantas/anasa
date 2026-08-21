@@ -6,6 +6,7 @@ if(BUILD_TESTS)
     set(TEST_SOURCES
         utils/queues/SpscQueueTests.cpp
         audio-pipeline/AudioSimulatorTests.cpp
+        render/RenderTests.cpp
     )
 
     add_executable(AnasaTests ${TEST_SOURCES})
@@ -23,6 +24,7 @@ if(BUILD_TESTS)
                           queues
                           audio-pipeline
                           playback
+                          renderer
     )
 
     source_group(

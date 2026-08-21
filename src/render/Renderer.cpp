@@ -1,6 +1,6 @@
 #include <algorithm>
 #include <cmath>
-#include <cassert>
+#include <stdexcept>
 
 #include "render/Renderer.hpp"
 #include "render/RenderConstants.hpp"
@@ -14,8 +14,10 @@ Renderer::Renderer(int sampleRate, const RenderSettings& renderSettings, Version
       _workIterations(renderSettings.workIterations),
       _versionTable(versionTable)
 {
-    assert(_sampleRate > 0 && "Sample rate should be always positive");
-    assert(_workIterations >= 0 && "Work iterations can not be negative");
+    if(_sampleRate <= 0)
+        throw std::invalid_argument("Sample rate should always be positive");
+    if(_workIterations < 0)
+        throw std::invalid_argument("Work iterations can not be negative");
 }
 
 bool Renderer::renderTile(RenderJob& job, int tileIndex, const std::atomic<bool>& stopRequested) const

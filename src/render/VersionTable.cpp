@@ -3,11 +3,15 @@ namespace anasa
 {
     VersionTable::VersionTable(int count)
         : _count(count),
-          _values(std::make_unique<std::atomic<int>[]>(count))
+          _values(nullptr)
     {
-        assert(count > 0);
-        for (int i = 0; i < _count; ++i)
-            _values[i].store(1);
+        if(count <= 0)
+            throw std::invalid_argument("Count must be positive");
+       
+        _values = std::make_unique<std::atomic<int>[]>(_count);
+
+        for (int chunk = 0; chunk < _count; ++chunk)
+            _values[chunk].store(1, std::memory_order_relaxed);
     }
 
     int VersionTable::get(int chunk) const

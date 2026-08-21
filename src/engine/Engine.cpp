@@ -6,7 +6,7 @@ namespace anasa
     Engine::Engine(EngineSettings settings)
         :_settings(settings),
          _totalFrames(_settings.timelineInSeconds * _settings.audio.sampleRate),
-         _chunkCount((_totalFrames + CHUNK_FRAMES - 1) / CHUNK_FRAMES),
+         _chunkCount((_totalFrames + CHUNK_FRAMES - 1) / CHUNK_FRAMES), // (ceil(_totalFrames/CHUNK_FRAMES))
          _versionTable(_chunkCount),
          _sharedState(),
          _readyAudioQueue(READY_AUDIO_QUEUE_SLOTS),
