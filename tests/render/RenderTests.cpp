@@ -3,6 +3,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <thread>
+#include <iostream>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -11,6 +12,10 @@
 #include "render/RenderSettings.hpp"
 #include "render/RenderTypes.hpp"
 #include "render/VersionTable.hpp"
+
+#ifdef enable_benchmarks
+#include "benchmarks/Benchmark.hpp"
+#endif
 
 namespace anasa
 {
@@ -123,6 +128,28 @@ TEST_CASE("Renderer: rejects invalid settings")
     settings.workIterations = -1;
 
     REQUIRE_THROWS_AS(Renderer(48000, settings, versions), std::invalid_argument);
+}
+
+TEST_CASE("Renderer: rejects invalid tile and chunk indices")
+{
+    VersionTable versions(4);
+    RenderSettings settings = makeTestRenderSettings();
+    Renderer renderer(48000, settings, versions);
+
+    RenderJob job;
+    initializeJob(job, versions, 1);
+
+    std::atomic<bool> stopRequested{false};
+
+    REQUIRE_THROWS_AS(renderer.renderTile(job, -1, stopRequested), std::out_of_range);
+    REQUIRE_THROWS_AS(renderer.renderTile(job, TILES_PER_CHUNK, stopRequested), std::out_of_range);
+    REQUIRE_THROWS_AS(renderer.renderTile(job, TILES_PER_CHUNK + 1, stopRequested), std::out_of_range);
+    job.chunk = -1;
+    REQUIRE_THROWS_AS(renderer.renderTile(job, 0, stopRequested), std::out_of_range);
+    job.chunk = versions.count();
+    REQUIRE_THROWS_AS(renderer.renderTile(job, 0, stopRequested), std::out_of_range);
+    job.chunk = versions.count() + 1;
+    REQUIRE_THROWS_AS(renderer.renderTile(job, 0, stopRequested), std::out_of_range);
 }
 
 TEST_CASE("Renderer: writes only the requested tile")
@@ -291,5 +318,47 @@ TEST_CASE("Renderer: different tiles can render concurrently")
         REQUIRE(std::abs(job.samples[frame]) <= 1.0f);
     }
 }
+#ifdef enable_benchmarks
+TEST_CASE("Renderer: Check renderTile() execution time / benchmark")
+{
+    VersionTable versions(4);
+    RenderSettings settings = makeTestRenderSettings(300);
+    Renderer renderer(48000, settings, versions);
+    std::atomic<bool> stopRequested{false};
+
+    RenderJob job;
+    initializeJob(job, versions, 1);
+
+    benchmarks::Benchmark benchmark(100, 10, 10);
+    benchmarks::BenchmarkResult result = benchmark.run([&](std::size_t operation) -> double
+    {
+        int tileIndex = static_cast<int>(operation % TILES_PER_CHUNK);
+
+        if (!renderer.renderTile(job, tileIndex, stopRequested))
+            throw std::runtime_error("renderTile() was cancelled");
+
+        int sampleIndex = tileIndex * TILE_FRAMES + TILE_FRAMES / 2;
+        double sample = job.samples[sampleIndex];
+
+        return sample * sample;
+    });
+    
+
+    REQUIRE(std::isfinite(result.operationsPerSecond));
+    REQUIRE(std::isfinite(result.nanosecondsPerOperation));
+    REQUIRE(result.operationsPerSecond > 0.0);
+    REQUIRE(result.nanosecondsPerOperation > 0.0);
+    REQUIRE(result.checksum > 0.0);
+    double renderTimeInUs = result.nanosecondsPerOperation / 1000.0;
+    std::cout << "\n*--------------------------------* \n"
+              << "|      Renderer (renderTile())   | \n"
+              << "*--------------------------------* \n"
+              << "Work iterations:       " << settings.workIterations
+              << "Operations per second: " << result.operationsPerSecond << '\n'
+              << "Average tile time:     " << renderTimeInUs << " us\n"
+              << "Checksum:              " << result.checksum << '\n';
+    
+}
+#endif // enable_benchmarks
 
 } // namespace anasa

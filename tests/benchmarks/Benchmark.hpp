@@ -3,36 +3,42 @@
 
 #include <chrono>
 #include <cstddef>
+#include <stdexcept>
 
 namespace anasa::benchmarks
 {
 
 struct BenchmarkResult
 {
-    double transfersPerSecond = 0.0;
-    double nanosecondsPerTransfer = 0.0;
+    double operationsPerSecond = 0.0;
+    double nanosecondsPerOperation = 0.0;
     double checksum = 0.0;
 };
 
 class Benchmark
 {
 public:
-    Benchmark(std::size_t transfersPerRound, std::size_t roundCount, std::size_t warmupTransfers)
-        : _transfersPerRound(transfersPerRound),
+    Benchmark(std::size_t operationsPerRound, std::size_t roundCount, std::size_t warmupOperations)
+        : _operationsPerRound(operationsPerRound),
           _roundCount(roundCount),
-          _warmupTransfers(warmupTransfers)
+          _warmupOperations(warmupOperations)
     {
+        if (_operationsPerRound == 0)
+            throw std::invalid_argument("operationsPerRound must be greater than zero");
+
+        if (_roundCount == 0)
+            throw std::invalid_argument("roundCount must be greater than zero");
     }
 
-    template <typename Transfer>
-    BenchmarkResult run(Transfer&& transfer) const
+    template <typename Operation>
+    BenchmarkResult run(Operation&& operation) const
     {
         using Clock = std::chrono::steady_clock;
 
         double checksum = 0.0f;
 
-        for (std::size_t i = 0; i < _warmupTransfers; ++i)
-            checksum += transfer(i);
+        for (std::size_t i = 0; i < _warmupOperations; ++i)
+            checksum += operation(i);
 
         double totalSeconds = 0.0f;
 
@@ -40,24 +46,24 @@ public:
         {
             const auto start = Clock::now();
 
-            for (std::size_t i = 0; i < _transfersPerRound; ++i)
-                checksum += transfer(i);
+            for (std::size_t i = 0; i < _operationsPerRound; ++i)
+                checksum += operation(i);
 
             const auto end = Clock::now();
             totalSeconds += std::chrono::duration<double>(end - start).count();
         }
 
         const double meanSeconds = totalSeconds / static_cast<double>(_roundCount);
-        const double transfersPerSecond = static_cast<double>(_transfersPerRound) / meanSeconds;
-        const double nanosecondsPerTransfer =  meanSeconds * 1000000000.0f / static_cast<double>(_transfersPerRound);
+        const double operationsPerSecond = static_cast<double>(_operationsPerRound) / meanSeconds;
+        const double nanosecondsPerOperation =  meanSeconds * 1000000000.0f / static_cast<double>(_operationsPerRound);
 
-        return {transfersPerSecond, nanosecondsPerTransfer, checksum};
+        return {operationsPerSecond, nanosecondsPerOperation, checksum};
     }
 
 private:
-    std::size_t _transfersPerRound;
+    std::size_t _operationsPerRound;
     std::size_t _roundCount;
-    std::size_t _warmupTransfers;
+    std::size_t _warmupOperations;
 };
 
 } // namespace anasa::benchmarks

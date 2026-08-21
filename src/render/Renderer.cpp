@@ -22,11 +22,11 @@ Renderer::Renderer(int sampleRate, const RenderSettings& renderSettings, Version
 
 bool Renderer::renderTile(RenderJob& job, int tileIndex, const std::atomic<bool>& stopRequested) const
 {
-    assert((tileIndex >= 0) && "tileIndex must not be negative");
-    assert((tileIndex < TILES_PER_CHUNK) && "tileIndex exceeds tiles per chunk");
+    if (tileIndex < 0 || tileIndex >= TILES_PER_CHUNK)
+        throw std::out_of_range("tileIndex is outside the chunk");
 
-    assert((job.chunk >= 0) && "chunk index must not be negative");
-    assert((job.chunk < _versionTable.count()) && "chunk index exceeds timeline chunk count");
+    if (job.chunk < 0 || job.chunk >= _versionTable.count())
+        throw std::out_of_range("chunk index is outside the timeline");
 
     if (shouldCancel(job, stopRequested))
     {
