@@ -353,7 +353,7 @@ TEST_CASE("Renderer: Check renderTile() execution time / benchmark")
     std::cout << "\n*--------------------------------* \n"
               << "|      Renderer (renderTile())   | \n"
               << "*--------------------------------* \n"
-              << "Work iterations:       " << settings.workIterations
+              << "Work iterations:       " << settings.workIterations << '\n'
               << "Operations per second: " << result.operationsPerSecond << '\n'
               << "Average tile time:     " << renderTimeInUs << " us\n"
               << "Checksum:              " << result.checksum << '\n';
