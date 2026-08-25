@@ -80,3 +80,5 @@ add_subdirectory(src)
 if(BUILD_TESTS)
     add_subdirectory(tests)
 endif()
+
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)

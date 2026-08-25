@@ -3,6 +3,7 @@
 
 #include "audio-pipeline/AudioSettings.hpp"
 #include "render/RenderSettings.hpp"
+#include "execution/ExecutorSettings.hpp"
 
 namespace anasa
 {
@@ -10,6 +11,7 @@ namespace anasa
     {
         AudioSettings audio;
         RenderSettings render;
+        ExecutorSettings executor;
         int timelineInSeconds = 12;
     };
     

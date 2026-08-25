@@ -86,8 +86,7 @@ namespace anasa
         Clock::time_point nextCallbackTime = Clock::now() + period;
         
         // Audio thread continues until another thread requests shutdown
-        while (!_stopRequested.load(std::memory_order_acquire) &&
-               !_sharedState.stop.load(std::memory_order_acquire)) 
+        while (!_stopRequested.load(std::memory_order_acquire) && !_sharedState.stop.load(std::memory_order_acquire)) 
         {
             // The simulated audio thread has no block to consume yet, so it sleeps.
             // At nextCallbackTime, another audio block becomes due for consumption.
@@ -113,7 +112,7 @@ namespace anasa
                 long long callbackDurationInUsecs = std::chrono::duration_cast<std::chrono::microseconds>
                 (Clock::now() - callbackStart).count();
 
-                _callbackMaxInUs = _callbackMaxInUs > callbackDurationInUsecs? _callbackMaxInUs : callbackDurationInUsecs;
+                _callbackMaxInUs = _callbackMaxInUs > callbackDurationInUsecs ? _callbackMaxInUs : callbackDurationInUsecs;
 
 
                 // Advance virtual device clock from the previous scheduled deadline

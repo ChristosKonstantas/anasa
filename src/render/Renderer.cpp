@@ -48,8 +48,7 @@ bool Renderer::renderTile(RenderJob& job, int tileIndex, const std::atomic<bool>
     // A different content version produces different audio (toy-only behavior).
     const float revision = static_cast<float>(job.version % 13) / 13.0f;
     
-    // Synthetic serialized CPU workload used to stress the scheduler. 
-    // This is not a production DSP or inference algorithm.
+    // Synthetic serialized CPU workload used to stress the scheduler. This is not a sophisticated DSP or inference algorithm.
     for (int frame = tileFirstFrame; frame < tileLastFrame; ++frame) // 512 ... 767
     {
         int frameInsideTile = frame - tileFirstFrame; // 0 ... 255
@@ -88,8 +87,7 @@ bool Renderer::renderTile(RenderJob& job, int tileIndex, const std::atomic<bool>
         // Third harmonic.
         voice +=  0.04f * std::sin(3.0f * phase); // 3 * f
         
-        // Artificial nonlinear workload standing in for
-        // neural inference or an expensive DSP kernel.
+        // Artificial nonlinear workload standing in for "neural inference" or an expensive DSP kernel.
         float state = voice + revision;
 
         for (int iteration = 0; iteration < _workIterations; ++iteration)
