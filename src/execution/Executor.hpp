@@ -44,8 +44,7 @@ namespace anasa
 
     private:
         void                                   workerLoop(); // Waits for work, removes one FIFO task, renders outside the queue mutex and exits when shutdown is requested.
-        void                                   publishCompleted(std::shared_ptr<RenderJob> job); // Publishes the complete job to the mutex-protected completion queue.
-
+        
         ExecutorSettings                       _settings;
         Renderer&                              _renderer;
 

@@ -59,7 +59,7 @@ namespace anasa
         REQUIRE_NOTHROW(executor.stop());
     }
 
-    TEST_CASE("Executor: rejects submissions while stopped")
+    TEST_CASE("Executor: rejects submissions while stopped and accepts them while started")
     {
         VersionTable versions(4);
         RenderSettings renderSettings = functions::makeTestRenderSettings();
@@ -72,6 +72,7 @@ namespace anasa
         REQUIRE_FALSE(executor.submit({job, 0}));
 
         executor.start();
+        REQUIRE(executor.submit({job, 0}));
         executor.stop();
 
         REQUIRE_FALSE(executor.submit({job, 0}));

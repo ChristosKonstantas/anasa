@@ -161,6 +161,7 @@ namespace anasa
                 _queuedTasks.pop();
             }
 
+            // (2) Render tile of popped task's job
             // _taskMutex is no longer held, so other workers can take tasks while this worker performs expensive rendering.
             try
             {
@@ -174,20 +175,20 @@ namespace anasa
                 // An exception must never escape a worker thread.
                 task.job->cancelled.store(true, std::memory_order_release);
             }
+            
+            // (3) Publish completed jobs when none of them exists anymore
 
+            // previousTilesRemaining has the value before subtraction takes place
             int previousTilesRemaining = task.job->tilesRemaining.fetch_sub(1, std::memory_order_acq_rel);
 
             assert(previousTilesRemaining > 0);
 
             if (previousTilesRemaining == 1)
-                publishCompleted(std::move(task.job));
+            {
+                std::lock_guard<std::mutex> lock(_completedMutex);
+                _completedJobs.push(std::move(task.job));
+            }   
         }
-    }
-
-    void Executor::publishCompleted(std::shared_ptr<RenderJob> job)
-    {
-        std::lock_guard<std::mutex> lock(_completedMutex);
-        _completedJobs.push(std::move(job));
     }
 
 } // namespace anasa
