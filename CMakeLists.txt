@@ -71,14 +71,15 @@ if(BUILD_TESTS)
 
     list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 
+    set_target_properties(
+        Catch2
+        Catch2WithMain
+        PROPERTIES
+            FOLDER "ThirdParty"
+    )
+
+    add_subdirectory(tests)
 endif()
 
 # Code
 add_subdirectory(src)
-
-# Tests
-if(BUILD_TESTS)
-    add_subdirectory(tests)
-endif()
-
-set_property(GLOBAL PROPERTY USE_FOLDERS ON)

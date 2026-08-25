@@ -1,6 +1,5 @@
 anasa_add_module(   
     engine
-    FOLDER "engine"
     SOURCES
         EngineSettings.hpp
         Engine.cpp

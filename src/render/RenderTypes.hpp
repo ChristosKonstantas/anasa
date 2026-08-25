@@ -10,9 +10,9 @@ namespace anasa
 {
     struct RenderJob
     {
-        int chunk = 0;
-        int version = 0;
-        std::atomic<int> tilesRemaining{TILES_PER_CHUNK};
+        int               chunk = 0;
+        int               version = 0;
+        std::atomic<int>  tilesRemaining{TILES_PER_CHUNK};
         std::atomic<bool> cancelled{false};
         std::array<float, CHUNK_FRAMES> samples{};
     };

@@ -1,6 +1,5 @@
 anasa_add_module(   
     renderer
-    FOLDER "render"
     SOURCES
         RenderConstants.hpp
         Renderer.cpp

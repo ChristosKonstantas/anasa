@@ -1,6 +1,5 @@
 anasa_add_module(   
     executor
-    FOLDER "execution"
     SOURCES
         ExecutorTypes.hpp
         ExecutorSettings.hpp
