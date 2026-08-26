@@ -4,6 +4,7 @@
 #include "audio-pipeline/AudioSettings.hpp"
 #include "render/RenderSettings.hpp"
 #include "execution/ExecutorSettings.hpp"
+#include "scheduler/SchedulerSettings.hpp"
 
 namespace anasa
 {
@@ -12,6 +13,8 @@ namespace anasa
         AudioSettings audio;
         RenderSettings render;
         ExecutorSettings executor;
+        SchedulerSettings scheduler;
+
         int timelineInSeconds = 12;
     };
     

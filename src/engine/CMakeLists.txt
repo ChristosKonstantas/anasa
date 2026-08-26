@@ -6,4 +6,4 @@ anasa_add_module(
         Engine.hpp
 )
 
-target_link_libraries(engine PUBLIC audio-pipeline queues playback renderer executor)
+target_link_libraries(engine PUBLIC audio-pipeline queues playback renderer executor scheduler)
