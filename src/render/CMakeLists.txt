@@ -2,6 +2,7 @@ anasa_add_module(
     renderer
     SOURCES
         RenderConstants.hpp
+        RenderFrameUtils.hpp
         Renderer.cpp
         Renderer.hpp
         RenderSettings.hpp

@@ -3,13 +3,17 @@
 
 namespace anasa
 {
+    struct RenderSettings
+    {
+        /*
+         * Number of neighboring frames affected by an edit. 
+         * This models the contextual dependency of a DSP algorithm or neural model around the directly edited range.
+        */
+        int contextFrames = 128;
 
-struct RenderSettings
-{
-    // Synthetic serialized CPU work used to create measurable
-    // scheduling contention. This is not production DSP or inference.
-    int workIterations = 300;
-};
+        /* Synthetic serialized CPU work used to create measurable scheduling contention */
+        int workIterations = 300;
+    };
 
 } // namespace anasa
 
