@@ -3,4 +3,5 @@ anasa_add_module(
     HEADER_ONLY
     SOURCES
         PlaybackState.hpp
+        PlaybackTimeline.hpp
 )

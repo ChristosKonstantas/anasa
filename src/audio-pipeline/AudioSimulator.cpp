@@ -136,7 +136,8 @@ namespace anasa
         if (_audioState.generation != globalGeneration) // detect a seek or edit
         {
             _audioState.generation = globalGeneration;
-            _audioState.expectedBlockStartFrame = alignToAudioBlock(_sharedState.targetFrame.load(std::memory_order_acquire));
+            _audioState.expectedBlockStartFrame = alignFrameToAudioBlock(_sharedState.targetFrame.load(std::memory_order_acquire), 
+                                                                         _settings.audioBlockFrames);
         }
 
         const AudioBlock* head = nullptr;
@@ -200,10 +201,5 @@ namespace anasa
         _audioState.expectedBlockStartFrame += _settings.audioBlockFrames;
         // Publish progress to the scheduler
         _sharedState.nextUnconsumedFrame.store(_audioState.expectedBlockStartFrame, std::memory_order_release);
-    }
-    
-    int AudioSimulator::alignToAudioBlock(int frame) const
-    {
-        return frame - frame % _settings.audioBlockFrames;
     }
 } // namespace anasa

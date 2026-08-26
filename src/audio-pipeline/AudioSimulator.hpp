@@ -1,12 +1,14 @@
 #ifndef AUDIO_SIMULATOR_HPP
 #define AUDIO_SIMULATOR_HPP
 
+#include <atomic>
 #include <thread>
 
 #include "utils/queues/SpscQueue.hpp"
 #include "audio-pipeline/AudioSettings.hpp"
 #include "audio-pipeline/AudioTypes.hpp"
 #include "playback/PlaybackState.hpp"
+#include "playback/PlaybackTimeline.hpp"
 
 namespace anasa
 {
@@ -26,7 +28,6 @@ namespace anasa
     private:               
         void                     periodicAudioDeviceClock();
         void                     audioCallback();
-        int                      alignToAudioBlock(int frame) const;
         
         AudioSettings            _settings;
         std::thread              _audioThread;
