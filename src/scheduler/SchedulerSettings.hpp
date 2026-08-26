@@ -10,14 +10,14 @@ namespace anasa
     {
         SchedulingPolicyType policyType = SchedulingPolicyType::Priority;
 
-        int commandQueueSlots = DEFAULT_COMMAND_QUEUE_SLOTS;
+        int commandQueueSlots   = DEFAULT_COMMAND_QUEUE_SLOTS;
 
-        int prebufferBlocks = 16;
-        int lowWaterBlocks = 16;
-        int highWaterBlocks = 48;
-        int urgentChunks = 8;
+        int prebufferBlocks     = 16;
+        int lowWaterBlocks      = 16;
+        int highWaterBlocks     = 48;
+        int urgentChunks        = 8;
 
-        int maxPendingTiles = 256;
+        int maxPendingTiles     = 256;
         int urgentReservedTiles = 64;
 
         bool rebufferOnEdit = true;
