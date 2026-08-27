@@ -11,6 +11,8 @@
 #include "render/RenderConstants.hpp"
 #include "render/Renderer.hpp"
 #include "execution/Executor.hpp"
+#include "scheduler/Scheduler.hpp"
+#include "scheduler/SchedulerTypes.hpp"
 
 namespace anasa
 {
@@ -22,17 +24,20 @@ namespace anasa
 
         void start();
         void stop();
+        bool post(Command command);
 
     private:
         EngineSettings                   _settings;
         int                              _totalFrames;
         int                              _chunkCount;
+
         VersionTable                     _versionTable; 
         SharedState                      _sharedState;
         SpscQueue<AudioBlock>            _readyAudioQueue;
 
         Renderer                         _renderer;
         Executor                         _executor;
+        Scheduler                        _scheduler;
         AudioSimulator                   _audioSimulator;
 
         bool                             _started;

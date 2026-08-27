@@ -1,8 +1,8 @@
 anasa_add_module(
     scheduler
-    HEADER_ONLY
-    FOLDER "scheduler"
     SOURCES
+        Scheduler.hpp
+        Scheduler.cpp
         SchedulerConstants.hpp
         SchedulerSettings.hpp
         SchedulerTypes.hpp
