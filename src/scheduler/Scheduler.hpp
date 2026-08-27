@@ -41,12 +41,15 @@ namespace anasa
         void                    handleCommand(Command command);
         void                    invalidateVersions(int firstFrame, int lastFrame);
         static std::size_t      validateCommandQueueSlots(int commandQueueSlots);
+        RenderClassification    classifyChunk(int chunk, int playheadFrame) const;
+        bool                    chunkIntersectsViewport(int chunk) const;
 
         const SchedulerSettings _settings;
         const int               _audioBlockFrames;
         const int               _contextFrames;
         const int               _totalFrames;
-
+        const int               _chunkCount;
+        
         SharedState&            _sharedState;
         VersionTable&           _versionTable;
 

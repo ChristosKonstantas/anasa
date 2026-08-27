@@ -42,6 +42,25 @@ namespace anasa
         int lastFrame = 0;
     };
 
+    enum class RenderPriority
+    {
+        Urgent = 0,
+        Visible = 1,
+        Background = 2
+    };
+
+    struct RenderClassification // scheduling metadata
+    {
+        RenderPriority priority = RenderPriority::Background;
+
+        // Timeline frame at which urgent content is first required.
+        // -1 means that the job has no playback deadline.
+        int deadlineFrame = -1;
+
+        // Distance between the chunk start and the current playhead.
+        int distanceInFrames = 0;
+    };
+
 } // namespace anasa
 
 #endif // SCHEDULER_TYPES_HPP

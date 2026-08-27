@@ -19,6 +19,7 @@ namespace anasa
           _audioBlockFrames(audioSettings.audioBlockFrames),
           _contextFrames(renderSettings.contextFrames),
           _totalFrames(totalFrames),
+          _chunkCount(versionTable.count()),
           _sharedState(sharedState),
           _versionTable(versionTable),
           _commandQueue(validateCommandQueueSlots(schedulerSettings.commandQueueSlots)),
@@ -68,7 +69,7 @@ namespace anasa
 
         const int expectedChunkCount = (_totalFrames + CHUNK_FRAMES - 1) / CHUNK_FRAMES;
 
-        if (_versionTable.count() != expectedChunkCount)
+        if (_chunkCount != expectedChunkCount)
             throw std::invalid_argument("VersionTable size does not match timeline chunk count");
     }
 
@@ -267,4 +268,52 @@ namespace anasa
         return static_cast<std::size_t>(commandQueueSlots);
     }
 
+    RenderClassification Scheduler::classifyChunk(int chunk, int playheadFrame) const
+    {
+        if (chunk < 0 || chunk >= _chunkCount)
+            throw std::out_of_range("chunk index is outside the timeline");
+
+        const int boundedPlayhead = clampTimelineBoundary(playheadFrame, _totalFrames);
+        const int chunkFirstFrame = firstFrameOfChunk(chunk);
+
+        RenderClassification classification;
+        classification.distanceInFrames = std::abs(chunkFirstFrame - boundedPlayhead);
+
+        // _playRequested usage instead of SharedState::playing because urgent prebuffering must happen *before* playback is allowed to begin.
+        if (_playRequested && boundedPlayhead < _totalFrames)
+        {
+            const int firstUrgentChunk = frameToChunk(boundedPlayhead);
+            const int lastUrgentChunk = std::min(firstUrgentChunk + _settings.urgentChunks, _chunkCount);
+
+            if (chunk >= firstUrgentChunk && chunk < lastUrgentChunk)
+            {
+                classification.priority = RenderPriority::Urgent;
+
+                // The chunk containing the playhead is required immediately. Later chunks are required when playback reaches their start.
+                classification.deadlineFrame = chunkFirstFrame;
+
+                return classification;
+            }
+        }
+
+        if (chunkIntersectsViewport(chunk))
+        {
+            classification.priority = RenderPriority::Visible;
+            return classification;
+        }
+
+        classification.priority = RenderPriority::Background;
+        return classification;
+    }
+
+    bool Scheduler::chunkIntersectsViewport(int chunk) const
+    {
+        const int chunkFirstFrame = firstFrameOfChunk(chunk);
+        const int chunkLastFrame = std::min(chunkFirstFrame + CHUNK_FRAMES, _totalFrames);
+
+        // Both ranges are half-open:
+        // chunk:    [chunkFirstFrame, chunkLastFrame)
+        // viewport: [_viewportFirstFrame, _viewportLastFrame)
+        return chunkFirstFrame < _viewportLastFrame && chunkLastFrame > _viewportFirstFrame;
+    }
 } // namespace anasa
