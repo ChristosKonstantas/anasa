@@ -7,3 +7,5 @@ anasa_add_module(
         SchedulerSettings.hpp
         SchedulerTypes.hpp
 )
+
+target_link_libraries(scheduler PUBLIC audio-pipeline executor playback queues renderer)

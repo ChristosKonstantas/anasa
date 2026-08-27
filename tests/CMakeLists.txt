@@ -1,5 +1,3 @@
-set(TESTS_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-
 # Build tests only if BUILD_TESTS is enabled
 if(BUILD_TESTS)
     # Here you should add any new test .cpp files
@@ -41,5 +39,5 @@ if(BUILD_TESTS)
     )
 
     include(Catch)
-    catch_discover_tests(tests)
+    catch_discover_tests(tests DISCOVERY_MODE PRE_TEST)
 endif()
