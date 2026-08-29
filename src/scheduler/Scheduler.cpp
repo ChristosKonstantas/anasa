@@ -10,6 +10,9 @@
 #include "playback/PlaybackTimeline.hpp"
 #include "render/RenderConstants.hpp"
 #include "render/RenderFrameUtils.hpp"
+#include "render/RenderTypes.hpp"
+
+#include "scheduler/policies/SchedulingPolicyFactory.hpp"
 
 namespace anasa
 {
@@ -24,12 +27,18 @@ namespace anasa
           _versionTable(versionTable),
           _executor(executor),
           _commandQueue(validateCommandQueueSlots(schedulerSettings.commandQueueSlots)),
+          _schedulingPolicy(createSchedulingPolicy(schedulerSettings.policyType)),
+          _pendingTiles(SchedulingPolicyCompare(_schedulingPolicy)),
+          _submittedVersion(_chunkCount, 0),
+          _activeJobs(_chunkCount),
           _stopRequested(false),
           _started(false),
           _playRequested(false),
           _viewportFirstFrame(0),
           _viewportLastFrame(std::min(totalFrames, 2 * audioSettings.sampleRate)),
-          _nextFrameToPublish(0)
+          _nextFrameToPublish(0),
+          _backgroundCursor(0),
+          _nextTileSequence(0)
     {
 
         if (audioSettings.sampleRate <= 0)
@@ -119,9 +128,30 @@ namespace anasa
         if (_schedulerThread.joinable())
             _schedulerThread.join();
 
+        while (!_pendingTiles.empty())
+        {
+            const PendingRenderTile& tile = _pendingTiles.top();
+
+            if (tile.job != nullptr)
+                tile.job->cancelled.store(true, std::memory_order_release);
+
+            _pendingTiles.pop();
+        }
+
+        for (std::shared_ptr<RenderJob>& job : _activeJobs)
+            if (job != nullptr)
+                job->cancelled.store(true, std::memory_order_release);
+
         while (!_commandQueue.isEmpty())
             _commandQueue.pop();
 
+        std::fill(_submittedVersion.begin(), _submittedVersion.end(), 0);
+
+        std::fill(_activeJobs.begin(), _activeJobs.end(), nullptr);
+
+        _playRequested = false;
+        _backgroundCursor = 0;
+        _nextTileSequence = 0;
         _started = false;
     }
 

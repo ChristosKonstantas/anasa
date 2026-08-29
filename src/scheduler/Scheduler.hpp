@@ -12,6 +12,8 @@
 #include "scheduler/SchedulerTypes.hpp"
 #include "utils/queues/SpscQueue.hpp"
 #include "execution/Executor.hpp"
+#include "scheduler/policies/ISchedulingPolicy.hpp"
+#include "scheduler/policies/SchedulingPolicyCompare.hpp"
 
 namespace anasa
 {
@@ -45,25 +47,39 @@ namespace anasa
         RenderClassification    classifyChunk(int chunk, int playheadFrame) const;
         bool                    chunkIntersectsViewport(int chunk) const;
 
-        const SchedulerSettings _settings;
-        const int               _audioBlockFrames;
-        const int               _contextFrames;
-        const int               _totalFrames;
-        const int               _chunkCount;
+        const SchedulerSettings                  _settings;
+        const int                                _audioBlockFrames;
+        const int                                _contextFrames;
+        const int                                _totalFrames;
+        const int                                _chunkCount;
         
-        SharedState&            _sharedState;
-        VersionTable&           _versionTable;
-        Executor&               _executor;
-        SpscQueue<Command>      _commandQueue;
-        std::thread             _schedulerThread;
-        std::atomic<bool>       _stopRequested;
-        bool                    _started;
+        SharedState&                             _sharedState;
+        VersionTable&                            _versionTable;
+        Executor&                                _executor;
 
-        // Scheduler-thread-owned transport state.
-        bool                    _playRequested;
-        int                     _viewportFirstFrame;
-        int                     _viewportLastFrame;
-        int                     _nextFrameToPublish;
+        SpscQueue<Command>                       _commandQueue;
+        std::shared_ptr<const ISchedulingPolicy> _schedulingPolicy;
+
+        std::priority_queue<
+            PendingRenderTile,
+            std::vector<PendingRenderTile>,
+            SchedulingPolicyCompare>             _pendingTiles;
+        
+        std::vector<int>                         _submittedVersion;
+        std::vector<std::shared_ptr<RenderJob>>  _activeJobs;
+        
+        std::thread                              _schedulerThread;
+        std::atomic<bool>                        _stopRequested;
+        
+        bool                                     _started;
+        bool                                     _playRequested;
+        
+        int                                      _viewportFirstFrame;
+        int                                      _viewportLastFrame;
+        int                                      _nextFrameToPublish;
+        int                                      _backgroundCursor;
+
+        long long                                _nextTileSequence;        
     };
 
 } // namespace anasa

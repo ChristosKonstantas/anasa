@@ -1,8 +1,12 @@
 #ifndef SCHEDULER_TYPES_HPP
 #define SCHEDULER_TYPES_HPP
 
+#include <memory>
+
 namespace anasa
 {
+    struct RenderJob; // forward declaration
+
     /* Selects the scheduling Strategy that Scheduler will construct */
     enum class SchedulingPolicyType
     {
@@ -59,6 +63,17 @@ namespace anasa
 
         // Distance between the chunk start and the current playhead.
         int distanceInFrames = 0;
+    };
+
+    /* One independently schedulable tile belonging to a RenderJob. The Scheduler owns these objects until they are submitted to Executor.*/
+    struct PendingRenderTile
+    {
+        std::shared_ptr<RenderJob> job;
+        int                        tileIndex = 0;
+        RenderPriority             priority = RenderPriority::Background;
+        int                        deadlineFrame = -1;
+        int                        distanceInFrames = 0;
+        long long                  sequence = 0;
     };
 
 } // namespace anasa
