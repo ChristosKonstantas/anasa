@@ -41,7 +41,8 @@ namespace anasa
         bool                                   submit(RenderTask task); // Attempts to add one tile task to the bounded FIFO execution queue.
         bool                                   popCompleted(std::shared_ptr<RenderJob>& job); // Collect completed jobs. Moves one fully completed RenderJob to the caller.
         int                                    workerCount() const; // Returns the fixed number of configured worker threads.
-
+        int                                    queuedTaskCount(); // Executor queue inspection providing task count
+    
     private:
         void                                   workerLoop(); // Waits for work, removes one FIFO task, renders outside the queue mutex and exits when shutdown is requested.
         

@@ -143,6 +143,13 @@ namespace anasa
         return _settings.workerCount;
     }
 
+    int Executor::queuedTaskCount()
+    {
+        std::lock_guard<std::mutex> lock(_taskMutex);
+
+        return static_cast<int>(_queuedTasks.size());
+    }
+
     void Executor::workerLoop()
     {
         while (true)

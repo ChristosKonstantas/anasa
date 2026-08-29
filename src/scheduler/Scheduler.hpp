@@ -11,6 +11,7 @@
 #include "scheduler/SchedulerSettings.hpp"
 #include "scheduler/SchedulerTypes.hpp"
 #include "utils/queues/SpscQueue.hpp"
+#include "execution/Executor.hpp"
 
 namespace anasa
 {
@@ -27,7 +28,7 @@ namespace anasa
     {
     public:
         Scheduler(const SchedulerSettings& schedulerSettings, const AudioSettings& audioSettings, const RenderSettings& renderSettings, 
-                  int totalFrames, SharedState& sharedState, VersionTable& versionTable);
+                  int totalFrames, SharedState& sharedState, VersionTable& versionTable, Executor& executor);
 
         ~Scheduler();
 
@@ -52,7 +53,7 @@ namespace anasa
         
         SharedState&            _sharedState;
         VersionTable&           _versionTable;
-
+        Executor&               _executor;
         SpscQueue<Command>      _commandQueue;
         std::thread             _schedulerThread;
         std::atomic<bool>       _stopRequested;

@@ -14,7 +14,7 @@
 namespace anasa
 {
     Scheduler::Scheduler(const SchedulerSettings& schedulerSettings, const AudioSettings& audioSettings, const RenderSettings& renderSettings,
-                         int totalFrames, SharedState& sharedState, VersionTable& versionTable)
+                         int totalFrames, SharedState& sharedState, VersionTable& versionTable, Executor& executor)
         : _settings(schedulerSettings),
           _audioBlockFrames(audioSettings.audioBlockFrames),
           _contextFrames(renderSettings.contextFrames),
@@ -22,6 +22,7 @@ namespace anasa
           _chunkCount(versionTable.count()),
           _sharedState(sharedState),
           _versionTable(versionTable),
+          _executor(executor),
           _commandQueue(validateCommandQueueSlots(schedulerSettings.commandQueueSlots)),
           _stopRequested(false),
           _started(false),
