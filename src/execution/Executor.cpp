@@ -155,7 +155,7 @@ namespace anasa
         while (true)
         {
             RenderTask task;
-            // (1) With FIFO priority pop a task from the _queuedTasks
+            // (1) Remove the oldest already-selected task from the FIFO _queuedTasks.
             {
                 std::unique_lock<std::mutex> lock(_taskMutex);
 
