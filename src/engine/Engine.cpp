@@ -45,8 +45,9 @@ namespace anasa
             // clean up if either component fails to start..
             _sharedState.stop.store(true, std::memory_order_release);
             _sharedState.playing.store(false, std::memory_order_release);
-            _audioSimulator.stop();
+            
             _scheduler.stop();
+            _audioSimulator.stop();
             _executor.stop();
 
             throw;
