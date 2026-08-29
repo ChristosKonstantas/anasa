@@ -20,6 +20,7 @@ Renderer::Renderer(int sampleRate, const RenderSettings& renderSettings, Version
         throw std::invalid_argument("Work iterations can not be negative");
 }
 
+//synthetic harmonic renderering and nonlinear workload
 bool Renderer::renderTile(RenderJob& job, int tileIndex, const std::atomic<bool>& stopRequested) const
 {
     if (tileIndex < 0 || tileIndex >= TILES_PER_CHUNK)
