@@ -12,7 +12,7 @@ namespace anasa
          _readyAudioQueue(READY_AUDIO_QUEUE_SLOTS),
          _renderer(_settings.audio.sampleRate, _settings.render, _versionTable),
          _executor(_settings.executor, _renderer),
-         _scheduler(_settings.scheduler, _settings.audio, _settings.render, _totalFrames, _sharedState, _versionTable),
+         _scheduler(_settings.scheduler, _settings.audio, _settings.render, _totalFrames, _sharedState, _versionTable, _executor),
          _audioSimulator(_settings.audio, _sharedState, _readyAudioQueue),
          _started(false)
     {
