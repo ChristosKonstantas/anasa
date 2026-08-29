@@ -140,6 +140,12 @@ class SpscQueue : private Alloc // Empty Base Optimization
             return isFull(write, read);
         }
 
+        void reset()
+        {
+            _read.store(0, std::memory_order_relaxed);
+            _write.store(0, std::memory_order_relaxed);
+        }
+        
     private:
 
         bool isFull(std::size_t write, std::size_t read) const

@@ -12,7 +12,7 @@ namespace anasa
          _readyAudioQueue(READY_AUDIO_QUEUE_SLOTS),
          _renderer(_settings.audio.sampleRate, _settings.render, _versionTable),
          _executor(_settings.executor, _renderer),
-         _scheduler(_settings.scheduler, _settings.audio, _settings.render, _totalFrames, _sharedState, _versionTable, _executor),
+         _scheduler(_settings.scheduler, _settings.audio, _settings.render, _totalFrames, _sharedState, _versionTable, _executor, _readyAudioQueue),
          _audioSimulator(_settings.audio, _sharedState, _readyAudioQueue),
          _started(false)
     {
@@ -27,7 +27,8 @@ namespace anasa
     {
         if (_started)
             return;
-
+            
+        _readyAudioQueue.reset();
         _sharedState.stop.store(false, std::memory_order_release);
         _sharedState.playing.store(false, std::memory_order_release);
 
