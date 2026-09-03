@@ -8,6 +8,8 @@ if(BUILD_TESTS)
         audio-pipeline/AudioSimulatorTests.cpp
         render/RenderTests.cpp
         execution/ExecutorTests.cpp
+        scheduler/SchedulingPolicyTests.cpp
+        scheduler/SchedulerIntegrationTests.cpp
     )
 
     add_executable(tests ${TEST_SOURCES})
@@ -30,6 +32,7 @@ if(BUILD_TESTS)
                           playback
                           renderer
                           executor
+                          scheduler
     )
 
     source_group(

@@ -109,11 +109,9 @@ namespace anasa
 
                 audioCallback();    
 
-                long long callbackDurationInUsecs = std::chrono::duration_cast<std::chrono::microseconds>
-                (Clock::now() - callbackStart).count();
+                long long callbackDurationInUsecs = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - callbackStart).count();
 
                 _callbackMaxInUs = _callbackMaxInUs > callbackDurationInUsecs ? _callbackMaxInUs : callbackDurationInUsecs;
-
 
                 // Advance virtual device clock from the previous scheduled deadline
                 // NOTE: Clock::now() + period would accumulate timing drift whenever a wake-up was late ->
@@ -133,17 +131,21 @@ namespace anasa
         const int globalGeneration = _sharedState.generation.load(std::memory_order_acquire);
 
         // A seek or live edit starts a new published audio stream
-        if (_audioState.generation != globalGeneration) // detect a seek or edit
+        if (_audioState.generation != globalGeneration)
         {
             _audioState.generation = globalGeneration;
-            _audioState.expectedBlockStartFrame = alignFrameToAudioBlock(_sharedState.targetFrame.load(std::memory_order_acquire), 
+            _audioState.expectedBlockStartFrame = alignFrameToAudioBlock(_sharedState.targetFrame.load(std::memory_order_acquire),
                                                                          _settings.audioBlockFrames);
+            // Publish the reset cursor before acknowledging its generation.
+            _sharedState.nextUnconsumedFrame.store(_audioState.expectedBlockStartFrame, std::memory_order_relaxed);
+            _sharedState.audioCursorGeneration.store(globalGeneration, std::memory_order_release);
         }
 
         const AudioBlock* head = nullptr;
         // Remove outdated blocks without locks. Work is bounded by queue capacity.
         for (std::size_t i = 0; i < _readyAudioQueue.capacity(); ++i) 
         {
+            // the producer may use the pointer returned by front() only until it calls pop()
             head = _readyAudioQueue.front();
 
             if (head == nullptr)
@@ -157,16 +159,20 @@ namespace anasa
                 break;
 
             _readyAudioQueue.pop();
-
-            // pop() destroyed the object head pointed to
+            // pop() makes the former front slot available to the producer
+            // the object remains constructed but the producer can now overwrite it
+            
+            // do not access the previous head pointer 
             head = nullptr;
         }
+        
         // If playback is paused or the engine is rebuffering, the callback returns
         if (!_sharedState.playing.load(std::memory_order_acquire))
             return;
 
         ++_callbacks;
 
+        // checks whether the exact required block is at the queue head
         const bool isExactBlock =
             head!=nullptr &&
             head->generation == globalGeneration &&
@@ -191,8 +197,7 @@ namespace anasa
             }
 
             // We are completely finished with head.
-            // pop() destroys the AudioBlock and allows the producer
-            // to reuse this queue slot.
+            // pop() destroys the AudioBlock and allows the producer to reuse this queue slot.
             _readyAudioQueue.pop();
 
         }

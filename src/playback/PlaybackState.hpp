@@ -38,10 +38,15 @@ namespace anasa
         std::atomic<int> targetFrame{0};
 
         /* Consumer cursor: first timeline frame not yet consumed by the audio callback. */
-        // After consuming or missing a n-frame block, the callback advances this value by n.
-        // The Scheduler reads it to determine the current: playhead, buffer lead and where stream publication should resume.
-        // During Seek or Edit, the Scheduler resets it to targetFrame.
+        // AudioSimulator is the only writer. After consuming or missing an n-frame block,
+        // it advances this value by n.
         std::atomic<int> nextUnconsumedFrame{0};
+
+        /* Identifies the generation to which nextUnconsumedFrame belongs. */
+        // AudioSimulator publishes nextUnconsumedFrame first, then this tag with release ordering.
+        // The Scheduler may use the cursor only when this equals generation otherwise the
+        // audio callback has not acknowledged the latest Seek or Edit and targetFrame is authoritative.
+        std::atomic<int> audioCursorGeneration{1};
     };
 
 } // namespace anasa
