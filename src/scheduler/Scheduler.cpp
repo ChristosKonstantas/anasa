@@ -319,27 +319,6 @@ namespace anasa
         }
     }
 
-    void Scheduler::invalidateVersions(int firstFrame, int lastFrame)
-    {
-        firstFrame = clampTimelineFrame(firstFrame, _totalFrames);
-        lastFrame = clampTimelineFrame(std::max(firstFrame, lastFrame), _totalFrames);
-
-        const int haloFirstFrame = std::max(0, firstFrame - _contextFrames);
-        const int haloLastFrame = std::min(_totalFrames - 1, lastFrame + _contextFrames);
-
-        const int firstChunk = frameToChunk(haloFirstFrame);
-        const int lastChunk = frameToChunk(haloLastFrame);
-
-        for (int chunk = firstChunk; chunk <= lastChunk; ++chunk)
-        {
-            _versionTable.bump(chunk);
-            _cache[chunk].ready = false;
-
-            if (_activeJobs[chunk] != nullptr)
-                _activeJobs[chunk]->cancelled.store(true, std::memory_order_release);
-        }
-    }
-
     void Scheduler::collectFinishedJobs()
     {
         std::shared_ptr<RenderJob> job;
@@ -438,59 +417,21 @@ namespace anasa
         if (prebufferReady || entireRemainderPublished)
             _sharedState.playing.store(true, std::memory_order_release);
     }
-    
-    bool Scheduler::cacheIsCurrent(int chunk) const
+
+    void Scheduler::updateBackgroundAdmission()
     {
-        return _cache[chunk].ready && _cache[chunk].version == _versionTable.get(chunk);
-    }
-
-    RenderClassification Scheduler::classifyChunk(int chunk, int playheadFrame) const
-    {
-        if (chunk < 0 || chunk >= _chunkCount)
-            throw std::out_of_range("chunk index is outside the timeline");
-
-        const int boundedPlayhead = clampTimelineBoundary(playheadFrame, _totalFrames);
-        const int chunkFirstFrame = firstFrameOfChunk(chunk);
-
-        RenderClassification classification;
-        classification.distanceInFrames = std::abs(chunkFirstFrame - boundedPlayhead);
-
-        // _playRequested usage instead of SharedState::playing because urgent prebuffering must happen *before* playback is allowed to begin.
-        if (_playRequested && boundedPlayhead < _totalFrames)
+        if (_settings.policyType == SchedulingPolicyType::Fifo || !_playRequested)
         {
-            const int firstUrgentChunk = frameToChunk(boundedPlayhead);
-            const int lastUrgentChunk = std::min(firstUrgentChunk + _settings.urgentChunks, _chunkCount);
-
-            if (chunk >= firstUrgentChunk && chunk < lastUrgentChunk)
-            {
-                classification.priority = RenderPriority::Urgent;
-
-                // The chunk containing the playhead is required immediately. Later chunks are required when playback reaches their start.
-                classification.deadlineFrame = chunkFirstFrame;
-
-                return classification;
-            }
+            _backgroundAllowed = true;
+            return;
         }
 
-        if (chunkIntersectsViewport(chunk))
-        {
-            classification.priority = RenderPriority::Visible;
-            return classification;
-        }
+        const int leadBlocks = readyLeadBlocks();
 
-        classification.priority = RenderPriority::Background;
-        return classification;
-    }
-
-    bool Scheduler::chunkIntersectsViewport(int chunk) const
-    {
-        const int chunkFirstFrame = firstFrameOfChunk(chunk);
-        const int chunkLastFrame = std::min(chunkFirstFrame + CHUNK_FRAMES, _totalFrames);
-
-        // Both ranges are half-open:
-        // chunk:    [chunkFirstFrame, chunkLastFrame)
-        // viewport: [_viewportFirstFrame, _viewportLastFrame)
-        return chunkFirstFrame < _viewportLastFrame && chunkLastFrame > _viewportFirstFrame;
+        if (leadBlocks < _settings.lowWaterBlocks)
+            _backgroundAllowed = false;
+        else if (leadBlocks >= _settings.highWaterBlocks)
+            _backgroundAllowed = true;
     }
 
     void Scheduler::scheduleRenderJobs()
@@ -555,6 +496,74 @@ namespace anasa
         }
     }
 
+    void Scheduler::refreshPendingClassifications(int playheadFrame)
+    {
+        std::vector<PendingRenderTile> tiles;
+        tiles.reserve(_pendingTiles.size());
+
+        const RenderJob* classifiedJob = nullptr;
+        RenderClassification classification;
+
+        while (!_pendingTiles.empty())
+        {
+            PendingRenderTile tile = _pendingTiles.top();
+            _pendingTiles.pop();
+
+            if (tile.job.get() != classifiedJob)
+            {
+                classifiedJob = tile.job.get();
+                classification = classifyChunk(tile.job->chunk, playheadFrame);
+            }
+
+            tile.priority = classification.priority;
+            tile.deadlineFrame = classification.deadlineFrame;
+            tile.distanceInFrames = classification.distanceInFrames;
+
+            tiles.push_back(std::move(tile));
+        }
+
+        for (PendingRenderTile& tile : tiles)
+            _pendingTiles.push(std::move(tile));
+    }
+
+    RenderClassification Scheduler::classifyChunk(int chunk, int playheadFrame) const
+    {
+        if (chunk < 0 || chunk >= _chunkCount)
+            throw std::out_of_range("chunk index is outside the timeline");
+
+        const int boundedPlayhead = clampTimelineBoundary(playheadFrame, _totalFrames);
+        const int chunkFirstFrame = firstFrameOfChunk(chunk);
+
+        RenderClassification classification;
+        classification.distanceInFrames = std::abs(chunkFirstFrame - boundedPlayhead);
+
+        // _playRequested usage instead of SharedState::playing because urgent prebuffering must happen *before* playback is allowed to begin.
+        if (_playRequested && boundedPlayhead < _totalFrames)
+        {
+            const int firstUrgentChunk = frameToChunk(boundedPlayhead);
+            const int lastUrgentChunk = std::min(firstUrgentChunk + _settings.urgentChunks, _chunkCount);
+
+            if (chunk >= firstUrgentChunk && chunk < lastUrgentChunk)
+            {
+                classification.priority = RenderPriority::Urgent;
+
+                // The chunk containing the playhead is required immediately. Later chunks are required when playback reaches their start.
+                classification.deadlineFrame = chunkFirstFrame;
+
+                return classification;
+            }
+        }
+
+        if (chunkIntersectsViewport(chunk))
+        {
+            classification.priority = RenderPriority::Visible;
+            return classification;
+        }
+
+        classification.priority = RenderPriority::Background;
+        return classification;
+    }
+    
     void Scheduler::scheduleChunk(int chunk, int playheadFrame)
     {
         if (chunk < 0 || chunk >= _chunkCount)
@@ -605,60 +614,6 @@ namespace anasa
         currentJob = std::move(jobToSchedule);
     }
 
-    void Scheduler::refreshPendingClassifications(int playheadFrame)
-    {
-        std::vector<PendingRenderTile> tiles;
-        tiles.reserve(_pendingTiles.size());
-
-        const RenderJob* classifiedJob = nullptr;
-        RenderClassification classification;
-
-        while (!_pendingTiles.empty())
-        {
-            PendingRenderTile tile = _pendingTiles.top();
-            _pendingTiles.pop();
-
-            if (tile.job.get() != classifiedJob)
-            {
-                classifiedJob = tile.job.get();
-                classification = classifyChunk(tile.job->chunk, playheadFrame);
-            }
-
-            tile.priority = classification.priority;
-            tile.deadlineFrame = classification.deadlineFrame;
-            tile.distanceInFrames = classification.distanceInFrames;
-
-            tiles.push_back(std::move(tile));
-        }
-
-        for (PendingRenderTile& tile : tiles)
-            _pendingTiles.push(std::move(tile));
-    }
-
-    int Scheduler::pendingTileLimit(RenderPriority priority) const
-    {
-        if (priority == RenderPriority::Urgent)
-            return _settings.maxPendingTiles;
-
-        return _settings.maxPendingTiles - _settings.urgentReservedTiles;
-    }
-
-    void Scheduler::updateBackgroundAdmission()
-    {
-        if (_settings.policyType == SchedulingPolicyType::Fifo || !_playRequested)
-        {
-            _backgroundAllowed = true;
-            return;
-        }
-
-        const int leadBlocks = readyLeadBlocks();
-
-        if (leadBlocks < _settings.lowWaterBlocks)
-            _backgroundAllowed = false;
-        else if (leadBlocks >= _settings.highWaterBlocks)
-            _backgroundAllowed = true;
-    }
-
     void Scheduler::dispatchPendingTiles()
     {
         while (!_pendingTiles.empty() && _executor.queuedTaskCount() < _executor.workerCount())
@@ -679,6 +634,8 @@ namespace anasa
         }
     }
 
+                             /* Helpers */
+
     int Scheduler::currentPlaybackFrame() const
     {
         // Before audio thread acknowledges seek -> Scheduler follows targetFrame
@@ -689,8 +646,34 @@ namespace anasa
         // The audio cursor still belongs to the previous stream.
         if (cursorGeneration != generation)
             return clampTimelineBoundary(_sharedState.targetFrame.load(std::memory_order_acquire), _totalFrames);
-        
+
         return clampTimelineBoundary(_sharedState.nextUnconsumedFrame.load(std::memory_order_acquire), _totalFrames);
+    }
+
+    void Scheduler::invalidateVersions(int firstFrame, int lastFrame)
+    {
+        firstFrame = clampTimelineFrame(firstFrame, _totalFrames);
+        lastFrame = clampTimelineFrame(std::max(firstFrame, lastFrame), _totalFrames);
+
+        const int haloFirstFrame = std::max(0, firstFrame - _contextFrames);
+        const int haloLastFrame = std::min(_totalFrames - 1, lastFrame + _contextFrames);
+
+        const int firstChunk = frameToChunk(haloFirstFrame);
+        const int lastChunk = frameToChunk(haloLastFrame);
+
+        for (int chunk = firstChunk; chunk <= lastChunk; ++chunk)
+        {
+            _versionTable.bump(chunk);
+            _cache[chunk].ready = false;
+
+            if (_activeJobs[chunk] != nullptr)
+                _activeJobs[chunk]->cancelled.store(true, std::memory_order_release);
+        }
+    }
+
+    bool Scheduler::cacheIsCurrent(int chunk) const
+    {
+        return _cache[chunk].ready && _cache[chunk].version == _versionTable.get(chunk);
     }
 
     int Scheduler::readyLeadBlocks() const
@@ -701,4 +684,24 @@ namespace anasa
 
         return readyFrames / _audioBlockFrames;
     }
+
+    bool Scheduler::chunkIntersectsViewport(int chunk) const
+    {
+        const int chunkFirstFrame = firstFrameOfChunk(chunk);
+        const int chunkLastFrame = std::min(chunkFirstFrame + CHUNK_FRAMES, _totalFrames);
+
+        // Both ranges are half-open:
+        // chunk:    [chunkFirstFrame, chunkLastFrame)
+        // viewport: [_viewportFirstFrame, _viewportLastFrame)
+        return chunkFirstFrame < _viewportLastFrame && chunkLastFrame > _viewportFirstFrame;
+    }
+
+    int Scheduler::pendingTileLimit(RenderPriority priority) const
+    {
+        if (priority == RenderPriority::Urgent)
+            return _settings.maxPendingTiles;
+
+        return _settings.maxPendingTiles - _settings.urgentReservedTiles;
+    }
+
 } // namespace anasa

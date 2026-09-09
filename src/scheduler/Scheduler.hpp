@@ -47,25 +47,31 @@ namespace anasa
         void                                     stop();
         bool                                     post(Command command);
                          
-    private:          
+    private:
+
+                            /* Main functionality */
+
         static std::size_t                       validateCommandQueueSlots(int commandQueueSlots);       
         void                                     schedulerLoop();
         void                                     readCommands();
         void                                     handleCommand(Command command);
-        void                                     invalidateVersions(int firstFrame, int lastFrame);
         void                                     collectFinishedJobs();
         void                                     feedAudioQueue();
-        bool                                     cacheIsCurrent(int chunk) const;
-        RenderClassification                     classifyChunk(int chunk, int playheadFrame) const;
-        bool                                     chunkIntersectsViewport(int chunk) const;
-        void                                     scheduleRenderJobs();
-        void                                     scheduleChunk(int chunk, int playheadFrame);
-        void                                     refreshPendingClassifications(int playheadFrame);
-        int                                      pendingTileLimit(RenderPriority priority) const;
         void                                     updateBackgroundAdmission();
+        void                                     scheduleRenderJobs();
+        void                                     refreshPendingClassifications(int playheadFrame);
+        RenderClassification                     classifyChunk(int chunk, int playheadFrame) const;
+        void                                     scheduleChunk(int chunk, int playheadFrame);
         void                                     dispatchPendingTiles();
+        
+                            /* Helpers */
+
         int                                      currentPlaybackFrame() const;
+        void                                     invalidateVersions(int firstFrame, int lastFrame);
+        bool                                     cacheIsCurrent(int chunk) const;
         int                                      readyLeadBlocks() const;
+        bool                                     chunkIntersectsViewport(int chunk) const;
+        int                                      pendingTileLimit(RenderPriority priority) const;
 
         const SchedulerSettings                  _settings;
         const int                                _audioBlockFrames;
@@ -85,6 +91,7 @@ namespace anasa
             PendingRenderTile,
             std::vector<PendingRenderTile>,
             SchedulingPolicyCompare>             _pendingTiles;
+
         std::vector<CacheEntry>                  _cache;
         std::vector<std::shared_ptr<RenderJob>>  _activeJobs;
         
