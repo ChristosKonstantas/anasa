@@ -134,7 +134,7 @@ namespace anasa
         if (_audioState.generation != globalGeneration)
         {
             _audioState.generation = globalGeneration;
-            _audioState.expectedBlockStartFrame = alignFrameToAudioBlock(_sharedState.targetFrame.load(std::memory_order_acquire),
+            _audioState.expectedBlockStartFrame = alignFrameToAudioBlock(_sharedState.targetFrame.load(std::memory_order_relaxed),
                                                                          _settings.audioBlockFrames);
             // Publish the reset cursor before acknowledging its generation.
             _sharedState.nextUnconsumedFrame.store(_audioState.expectedBlockStartFrame, std::memory_order_relaxed);
