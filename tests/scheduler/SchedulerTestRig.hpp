@@ -98,7 +98,7 @@ namespace anasa
             ExecutorSettings settings;
 
             settings.workerCount = 2;
-            settings.queuedTaskCapacity = 8;
+            settings.renderTasksQueueCapacity = 8;
 
             return settings;
         }

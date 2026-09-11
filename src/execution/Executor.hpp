@@ -51,11 +51,11 @@ namespace anasa
 
         std::vector<std::thread>               _workers;
 
-        std::queue<RenderTask>                 _queuedTasks; // 1 Scheduler (producer) / Many workers (consumers) -> SPMC
+        std::queue<RenderTask>                 _renderTasksQueue; // 1 Scheduler (producer) / Many workers (consumers) -> SPMC
         std::mutex                             _taskMutex;
         std::condition_variable                _taskConditionVariable;
 
-        std::queue<std::shared_ptr<RenderJob>> _completedJobs; // Many workers (producers) / 1 Scheduler (consumer) -> MPSC
+        std::queue<std::shared_ptr<RenderJob>> _completedJobsQueue; // Many workers (producers) / 1 Scheduler (consumer) -> MPSC
         std::mutex                             _completedMutex;
 
         std::atomic<bool>                      _stopRequested;

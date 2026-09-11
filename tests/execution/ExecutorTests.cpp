@@ -32,7 +32,7 @@ namespace anasa
         SECTION("queue capacity must be positive")
         {
             ExecutorSettings settings = functions::makeTestExecutorSettings();
-            settings.queuedTaskCapacity = 0;
+            settings.renderTasksQueueCapacity = 0;
 
             REQUIRE_THROWS_AS(Executor(settings, renderer), std::invalid_argument);
         }

@@ -17,8 +17,8 @@ namespace anasa
         if (_settings.workerCount <= 0)
             throw std::invalid_argument("workerCount must be greater than zero");
 
-        if (_settings.queuedTaskCapacity <= 0)
-            throw std::invalid_argument("queuedTaskCapacity must be greater than zero");
+        if (_settings.renderTasksQueueCapacity <= 0)
+            throw std::invalid_argument("renderTasksQueueCapacity must be greater than zero");
     }
 
     Executor::~Executor()
@@ -42,8 +42,8 @@ namespace anasa
         {
             std::lock_guard<std::mutex> lock(_completedMutex);
 
-            while (!_completedJobs.empty())
-                _completedJobs.pop();
+            while (!_completedJobsQueue.empty())
+                _completedJobsQueue.pop();
         }
 
         try
@@ -71,14 +71,14 @@ namespace anasa
             _stopRequested.store(true, std::memory_order_release);
 
             // Any remaining work should not be executed during shutdown: cancel and remove every task that has not started rendering.
-            while (!_queuedTasks.empty())
+            while (!_renderTasksQueue.empty())
             {
-                RenderTask& task = _queuedTasks.front();
+                RenderTask& task = _renderTasksQueue.front();
 
                 if (task.job)
                     task.job->cancelled.store(true, std::memory_order_release);
 
-                _queuedTasks.pop();
+                _renderTasksQueue.pop();
             }
         }
 
@@ -114,10 +114,10 @@ namespace anasa
             if (!_started || _stopRequested.load(std::memory_order_acquire))
                 return false;
 
-            if (static_cast<int>(_queuedTasks.size()) >= _settings.queuedTaskCapacity)
+            if (static_cast<int>(_renderTasksQueue.size()) >= _settings.renderTasksQueueCapacity)
                 return false;
 
-            _queuedTasks.push(std::move(task));
+            _renderTasksQueue.push(std::move(task));
         }
 
         _taskConditionVariable.notify_one(); // notify one thread waiting for this condition variable
@@ -129,11 +129,11 @@ namespace anasa
     {
         std::lock_guard<std::mutex> lock(_completedMutex);
 
-        if (_completedJobs.empty())
+        if (_completedJobsQueue.empty())
             return false;
 
-        job = std::move(_completedJobs.front());
-        _completedJobs.pop();
+        job = std::move(_completedJobsQueue.front());
+        _completedJobsQueue.pop();
 
         return true;
     }
@@ -147,7 +147,7 @@ namespace anasa
     {
         std::lock_guard<std::mutex> lock(_taskMutex);
 
-        return static_cast<int>(_queuedTasks.size());
+        return static_cast<int>(_renderTasksQueue.size());
     }
 
     void Executor::workerLoop()
@@ -155,17 +155,19 @@ namespace anasa
         while (true)
         {
             RenderTask task;
-            // (1) Remove the oldest already-selected task from the FIFO _queuedTasks.
+            // (1) Remove the oldest already-selected task from the FIFO _renderTasksQueue.
             {
                 std::unique_lock<std::mutex> lock(_taskMutex);
 
-                _taskConditionVariable.wait(lock, [this]{return _stopRequested.load(std::memory_order_acquire) || !_queuedTasks.empty();});
-
+                // Sleep if there is no work. Releases the mutex while sleeping.
+                _taskConditionVariable.wait(lock, [this]{return _stopRequested.load(std::memory_order_acquire) || !_renderTasksQueue.empty();});
+                
+                // We own the mutex again here.
                 if (_stopRequested.load(std::memory_order_acquire))
                     return;
 
-                task = std::move(_queuedTasks.front());
-                _queuedTasks.pop();
+                task = std::move(_renderTasksQueue.front());
+                _renderTasksQueue.pop();
             }
 
             // (2) Render tile of popped task's job
@@ -193,7 +195,7 @@ namespace anasa
             if (previousTilesRemaining == 1)
             {
                 std::lock_guard<std::mutex> lock(_completedMutex);
-                _completedJobs.push(std::move(task.job));
+                _completedJobsQueue.push(std::move(task.job));
             }   
         }
     }

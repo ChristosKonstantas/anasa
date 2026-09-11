@@ -9,7 +9,7 @@ struct ExecutorSettings
     int workerCount = 4;
     // Maximum number of tasks waiting inside the Executor.
     // Tasks already running on workers are not included.
-    int queuedTaskCapacity = 8;
+    int renderTasksQueueCapacity = 8;
 };
 
 } // namespace anasa
