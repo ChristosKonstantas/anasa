@@ -27,11 +27,11 @@ namespace anasa::functions
         int frameCount = 0;
     };
 
-    inline ExecutorSettings makeTestExecutorSettings(int workerCount = 4, int queuedTaskCapacity = 8)
+    inline ExecutorSettings makeTestExecutorSettings(int workerCount = 4, int renderTasksQueueCapacity = 8)
     {
         ExecutorSettings settings;
         settings.workerCount = workerCount;
-        settings.queuedTaskCapacity = queuedTaskCapacity;
+        settings.renderTasksQueueCapacity = renderTasksQueueCapacity;
 
         return settings;
     }
