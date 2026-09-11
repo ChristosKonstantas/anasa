@@ -166,7 +166,7 @@ namespace anasa
             const PendingRenderTile& tile = _pendingTiles.top();
 
             if (tile.job != nullptr)
-                tile.job->cancelled.store(true, std::memory_order_release);
+                tile.job->cancelled.store(true, std::memory_order_relaxed);
 
             _pendingTiles.pop();
         }
@@ -176,7 +176,7 @@ namespace anasa
 
         for (std::shared_ptr<RenderJob>& job : _activeJobs)
             if (job != nullptr)
-                job->cancelled.store(true, std::memory_order_release);
+                job->cancelled.store(true, std::memory_order_relaxed);
 
         std::fill(_activeJobs.begin(), _activeJobs.end(), nullptr);
 
@@ -220,7 +220,7 @@ namespace anasa
             scheduleRenderJobs();
             dispatchPendingTiles();
 
-            // TODO: make this event-driven because the scheduler is currently busy-waiting most of the time, which is wasteful and can cause latency spikes
+            // TODO: make this event-driven
             std::this_thread::sleep_for(1ms);
         }
     }
@@ -340,7 +340,7 @@ namespace anasa
             if (activeJob != job)
                 continue;
 
-            if (job->cancelled.load(std::memory_order_acquire) || _versionTable.get(chunk) != job->version)
+            if (job->cancelled.load(std::memory_order_relaxed) || _versionTable.get(chunk) != job->version)
             {
                 activeJob.reset();
                 continue;
@@ -411,12 +411,11 @@ namespace anasa
 
         // below now is executed only if (_playRequested && !_sharedState.playing.load(std::memory_order_acquire))
         // play is requested but playing has not started ->> prebuffering
-        const int leadBlocks = readyLeadBlocks();
-        const bool prebufferReady = leadBlocks >= _settings.prebufferBlocks;
+        const bool prebufferReady = readyLeadBlocks() >= _settings.prebufferBlocks;
         const bool entireRemainderPublished = _nextFrameToPublish >= _totalFrames;
 
         if (prebufferReady || entireRemainderPublished)
-            _sharedState.playing.store(true, std::memory_order_release);
+            _sharedState.playing.store(true, std::memory_order_release); // now callback is allowed to advance
     }
 
     void Scheduler::updateBackgroundAdmission()
@@ -578,7 +577,7 @@ namespace anasa
         std::shared_ptr<RenderJob>& currentJob = _activeJobs[chunk];
         
         // this is well scheduled already, therefore no need to schedule again
-        if (currentJob != nullptr && currentJob->version == version && !currentJob->cancelled.load(std::memory_order_acquire))
+        if (currentJob != nullptr && currentJob->version == version && !currentJob->cancelled.load(std::memory_order_relaxed))
             return;
 
         const RenderClassification classification = classifyChunk(chunk, playheadFrame);
@@ -588,14 +587,14 @@ namespace anasa
             return;
 
         if (currentJob != nullptr)
-            currentJob->cancelled.store(true, std::memory_order_release);
+            currentJob->cancelled.store(true, std::memory_order_relaxed);
 
         // now, activeJob will be replaced with a new job below
         std::shared_ptr<RenderJob> jobToSchedule = std::make_shared<RenderJob>();
 
         jobToSchedule->chunk = chunk;
         jobToSchedule->version = version;
-        jobToSchedule->cancelled.store(false, std::memory_order_relaxed);
+        jobToSchedule->cancelled.store(false, std::memory_order_relaxed); // the only false store as it initializes a newly created unpublished job
         jobToSchedule->tilesRemaining.store(TILES_PER_CHUNK, std::memory_order_relaxed);
 
         for (int tileIndex = 0; tileIndex < TILES_PER_CHUNK; ++tileIndex)
@@ -668,7 +667,7 @@ namespace anasa
             _cache[chunk].ready = false;
 
             if (_activeJobs[chunk] != nullptr)
-                _activeJobs[chunk]->cancelled.store(true, std::memory_order_release);
+                _activeJobs[chunk]->cancelled.store(true, std::memory_order_relaxed);
         }
     }
 

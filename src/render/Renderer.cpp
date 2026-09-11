@@ -31,7 +31,7 @@ bool Renderer::renderTile(RenderJob& job, int tileIndex, const std::atomic<bool>
 
     if (shouldCancel(job, stopRequested))
     {
-        job.cancelled.store(true, std::memory_order_release);
+        job.cancelled.store(true, std::memory_order_relaxed);
 
         return false;
     }
@@ -59,7 +59,7 @@ bool Renderer::renderTile(RenderJob& job, int tileIndex, const std::atomic<bool>
         {
             if (shouldCancel(job, stopRequested))
             {
-                job.cancelled.store(true, std::memory_order_release);
+                job.cancelled.store(true, std::memory_order_relaxed);
 
                 return false;
             }
@@ -104,7 +104,7 @@ bool Renderer::renderTile(RenderJob& job, int tileIndex, const std::atomic<bool>
     // The version could change after the final periodic check.
     if (shouldCancel(job, stopRequested))
     {
-        job.cancelled.store(true, std::memory_order_release);
+        job.cancelled.store(true, std::memory_order_relaxed);
 
         return false;
     }
@@ -119,7 +119,7 @@ bool Renderer::shouldCancel(const RenderJob& job, const std::atomic<bool>& stopR
         return true;
     }
 
-    if (job.cancelled.load(std::memory_order_acquire)) // this job has already been marked as cancelled.
+    if (job.cancelled.load(std::memory_order_relaxed)) // this job has already been marked as cancelled.
     {
         return true;
     }

@@ -151,7 +151,7 @@ namespace anasa
         bool completed = renderer.renderTile(job, TILE_INDEX, stopRequested);
 
         REQUIRE(completed);
-        REQUIRE_FALSE(job.cancelled.load(std::memory_order_acquire));
+        REQUIRE_FALSE(job.cancelled.load(std::memory_order_relaxed));
 
         int firstFrame = TILE_INDEX * TILE_FRAMES;
         int lastFrame = firstFrame + TILE_FRAMES;
@@ -221,7 +221,7 @@ namespace anasa
         std::atomic<bool> stopRequested{true};
 
         REQUIRE_FALSE(renderer.renderTile(job, 0, stopRequested));
-        REQUIRE(job.cancelled.load(std::memory_order_acquire));
+        REQUIRE(job.cancelled.load(std::memory_order_relaxed));
 
         for (float sample : job.samples)
             REQUIRE(sample == functions::UNTOUCHED_SAMPLE);
@@ -242,7 +242,7 @@ namespace anasa
         std::atomic<bool> stopRequested{false};
 
         REQUIRE_FALSE(renderer.renderTile(job, 0, stopRequested));
-        REQUIRE(job.cancelled.load(std::memory_order_acquire));
+        REQUIRE(job.cancelled.load(std::memory_order_relaxed));
 
         for (float sample : job.samples)
             REQUIRE(sample == functions::UNTOUCHED_SAMPLE);
@@ -292,7 +292,7 @@ namespace anasa
             REQUIRE(completed[tile]);
         }
 
-        REQUIRE_FALSE(job.cancelled.load(std::memory_order_acquire));
+        REQUIRE_FALSE(job.cancelled.load(std::memory_order_relaxed));
 
         for (int frame = 0; frame < CHUNK_FRAMES; ++frame)
         {

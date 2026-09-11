@@ -76,7 +76,7 @@ namespace anasa
                 RenderTask& task = _renderTasksQueue.front();
 
                 if (task.job)
-                    task.job->cancelled.store(true, std::memory_order_release);
+                    task.job->cancelled.store(true, std::memory_order_relaxed);
 
                 _renderTasksQueue.pop();
             }
@@ -177,12 +177,12 @@ namespace anasa
                 bool rendered = _renderer.renderTile(*task.job, task.tileIndex, _stopRequested);
 
                 if (!rendered)
-                    task.job->cancelled.store(true, std::memory_order_release);
+                    task.job->cancelled.store(true, std::memory_order_relaxed);
             }
             catch (...)
             {
                 // An exception must never escape a worker thread.
-                task.job->cancelled.store(true, std::memory_order_release);
+                task.job->cancelled.store(true, std::memory_order_relaxed);
             }
             
             // (3) Publish completed jobs when none of them exists anymore
