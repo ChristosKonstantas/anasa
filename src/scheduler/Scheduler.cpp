@@ -220,6 +220,7 @@ namespace anasa
             scheduleRenderJobs();
             dispatchPendingTiles();
 
+            // TODO: make this event-driven because the scheduler is currently busy-waiting most of the time, which is wasteful and can cause latency spikes
             std::this_thread::sleep_for(1ms);
         }
     }
