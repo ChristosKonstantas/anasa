@@ -18,7 +18,7 @@ namespace anasa
             throw std::invalid_argument("workerCount must be greater than zero");
 
         if (_settings.renderTasksQueueCapacity <= 0)
-            throw std::invalid_argument("renderTasksQueueCapacity must be greater than zero");
+            throw std::invalid_argument("queuedTaskCapacity must be greater than zero");
     }
 
     Executor::~Executor()
@@ -76,7 +76,7 @@ namespace anasa
                 RenderTask& task = _renderTasksQueue.front();
 
                 if (task.job)
-                    task.job->cancelled.store(true, std::memory_order_relaxed);
+                    task.job->cancelled.store(true, std::memory_order_release);
 
                 _renderTasksQueue.pop();
             }
@@ -177,12 +177,12 @@ namespace anasa
                 bool rendered = _renderer.renderTile(*task.job, task.tileIndex, _stopRequested);
 
                 if (!rendered)
-                    task.job->cancelled.store(true, std::memory_order_relaxed);
+                    task.job->cancelled.store(true, std::memory_order_release);
             }
             catch (...)
             {
                 // An exception must never escape a worker thread.
-                task.job->cancelled.store(true, std::memory_order_relaxed);
+                task.job->cancelled.store(true, std::memory_order_release);
             }
             
             // (3) Publish completed jobs when none of them exists anymore
