@@ -31,6 +31,7 @@ namespace anasa
           _commandQueue(validateCommandQueueSlots(schedulerSettings.commandQueueSlots)),
           _schedulingPolicy(createSchedulingPolicy(schedulerSettings.policyType)),
           _pendingTiles(SchedulingPolicyCompare(_schedulingPolicy)),
+          _reclassificationBuffer(_settings.maxPendingTiles),
           _cache(_chunkCount),
           _activeJobs(_chunkCount),
           _stopRequested(false),
@@ -380,12 +381,12 @@ namespace anasa
         {
             const int chunk = frameToChunk(_nextFrameToPublish);
 
-            // Publication is strictly ordered. Never skip a missing chunk.
+            // Publication is strictly ordered. Never skip a missing chunk. Postpone publication until the required chunk becomes available.
             if (!cacheIsCurrent(chunk))
                 break;
 
-            const int blockFirstFrame = _nextFrameToPublish;
-            const int chunkOffset = _nextFrameToPublish - firstFrameOfChunk(chunk);
+            const int blockFirstFrame = _nextFrameToPublish; // remember it's aligned to first frame of the audio block (see Seek)
+            const int chunkOffset = _nextFrameToPublish - firstFrameOfChunk(chunk); // locate the block's first frame within the chunk
 
             assert(chunkOffset >= 0);
             assert(chunkOffset + _audioBlockFrames <= CHUNK_FRAMES);
@@ -498,8 +499,7 @@ namespace anasa
 
     void Scheduler::refreshPendingClassifications(int playheadFrame)
     {
-        std::vector<PendingRenderTile> tiles;
-        tiles.reserve(_pendingTiles.size());
+        _reclassificationBuffer.clear();
 
         const RenderJob* classifiedJob = nullptr;
         RenderClassification classification;
@@ -519,10 +519,10 @@ namespace anasa
             tile.deadlineFrame = classification.deadlineFrame;
             tile.distanceInFrames = classification.distanceInFrames;
 
-            tiles.push_back(std::move(tile));
+            _reclassificationBuffer.push_back(std::move(tile));
         }
 
-        for (PendingRenderTile& tile : tiles)
+        for (PendingRenderTile& tile : _reclassificationBuffer)
             _pendingTiles.push(std::move(tile));
     }
 

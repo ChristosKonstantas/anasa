@@ -92,6 +92,7 @@ namespace anasa
             std::vector<PendingRenderTile>,
             SchedulingPolicyCompare>             _pendingTiles;
 
+        std::vector<PendingRenderTile>           _reclassificationBuffer;
         std::vector<CacheEntry>                  _cache;
         std::vector<std::shared_ptr<RenderJob>>  _activeJobs;
         
