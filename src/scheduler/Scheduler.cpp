@@ -509,8 +509,7 @@ namespace anasa
 
     void Scheduler::refreshPendingClassifications(int playheadFrame)
     {
-        std::vector<PendingRenderTile> tiles;
-        tiles.reserve(_pendingTiles.size());
+        _reclassificationBuffer.clear();
 
         const RenderJob* classifiedJob = nullptr;
         RenderClassification classification;
@@ -530,10 +529,10 @@ namespace anasa
             tile.deadlineFrame = classification.deadlineFrame;
             tile.distanceInFrames = classification.distanceInFrames;
 
-            tiles.push_back(std::move(tile));
+            _reclassificationBuffer.push_back(std::move(tile));
         }
 
-        for (PendingRenderTile& tile : tiles)
+        for (PendingRenderTile& tile : _reclassificationBuffer)
             _pendingTiles.push(std::move(tile));
     }
 
