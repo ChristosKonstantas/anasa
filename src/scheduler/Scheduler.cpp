@@ -30,7 +30,7 @@ namespace anasa
           _readyAudioQueue(readyAudioQueue),
           _commandQueue(validateCommandQueueSlots(schedulerSettings.commandQueueSlots)),
           _schedulingPolicy(createSchedulingPolicy(schedulerSettings.policyType)),
-          _pendingTiles(SchedulingPolicyCompare(_schedulingPolicy)),
+          _pendingTiles(SchedulingPolicyCompare(_schedulingPolicy), makePendingStorage(_settings.maxPendingTiles)),
           _reclassificationBuffer(_settings.maxPendingTiles),
           _cache(_chunkCount),
           _activeJobs(_chunkCount),
@@ -117,6 +117,16 @@ namespace anasa
             throw std::invalid_argument("commandQueueSlots must be greater than zero");
 
         return static_cast<std::size_t>(commandQueueSlots);
+    }
+
+    std::vector<PendingRenderTile> Scheduler::makePendingStorage(int capacity)
+    {
+        if (capacity <= 0)
+            throw std::invalid_argument("capacity must be greater than zero");
+
+        std::vector<PendingRenderTile> storage;
+        storage.reserve(static_cast<std::size_t>(capacity));
+        return storage;
     }
 
     void Scheduler::start()
@@ -499,7 +509,8 @@ namespace anasa
 
     void Scheduler::refreshPendingClassifications(int playheadFrame)
     {
-        _reclassificationBuffer.clear();
+        std::vector<PendingRenderTile> tiles;
+        tiles.reserve(_pendingTiles.size());
 
         const RenderJob* classifiedJob = nullptr;
         RenderClassification classification;
@@ -519,10 +530,10 @@ namespace anasa
             tile.deadlineFrame = classification.deadlineFrame;
             tile.distanceInFrames = classification.distanceInFrames;
 
-            _reclassificationBuffer.push_back(std::move(tile));
+            tiles.push_back(std::move(tile));
         }
 
-        for (PendingRenderTile& tile : _reclassificationBuffer)
+        for (PendingRenderTile& tile : tiles)
             _pendingTiles.push(std::move(tile));
     }
 

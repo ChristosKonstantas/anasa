@@ -43,74 +43,76 @@ namespace anasa
 
         ~Scheduler();
 
-        void                                     start();
-        void                                     stop();
-        bool                                     post(Command command);
+        void                                         start();
+        void                                         stop();
+        bool                                         post(Command command);
                          
     private:
+        friend class SchedulerTestRig;
 
                             /* Main functionality */
-
-        static std::size_t                       validateCommandQueueSlots(int commandQueueSlots);       
-        void                                     schedulerLoop();
-        void                                     readCommands();
-        void                                     handleCommand(Command command);
-        void                                     collectFinishedJobs();
-        void                                     feedAudioQueue();
-        void                                     updateBackgroundAdmission();
-        void                                     scheduleRenderJobs();
-        void                                     refreshPendingClassifications(int playheadFrame);
-        RenderClassification                     classifyChunk(int chunk, int playheadFrame) const;
-        void                                     scheduleChunk(int chunk, int playheadFrame);
-        void                                     dispatchPendingTiles();
+                            
+        static std::size_t                           validateCommandQueueSlots(int commandQueueSlots);
+        static std::vector<PendingRenderTile>        makePendingStorage(int capacity);
+        void                                         schedulerLoop();
+        void                                         readCommands();
+        void                                         handleCommand(Command command);
+        void                                         collectFinishedJobs();
+        void                                         feedAudioQueue();
+        void                                         updateBackgroundAdmission();
+        void                                         scheduleRenderJobs();
+        void                                         refreshPendingClassifications(int playheadFrame);
+        RenderClassification                         classifyChunk(int chunk, int playheadFrame) const;
+        void                                         scheduleChunk(int chunk, int playheadFrame);
+        void                                         dispatchPendingTiles();
         
                             /* Helpers */
 
-        int                                      currentPlaybackFrame() const;
-        void                                     invalidateVersions(int firstFrame, int lastFrame);
-        bool                                     cacheIsCurrent(int chunk) const;
-        int                                      readyLeadBlocks() const;
-        bool                                     chunkIntersectsViewport(int chunk) const;
-        int                                      pendingTileLimit(RenderPriority priority) const;
+        int                                          currentPlaybackFrame() const;
+        void                                         invalidateVersions(int firstFrame, int lastFrame);
+        bool                                         cacheIsCurrent(int chunk) const;
+        int                                          readyLeadBlocks() const;
+        bool                                         chunkIntersectsViewport(int chunk) const;
+        int                                          pendingTileLimit(RenderPriority priority) const;
 
-        const SchedulerSettings                  _settings;
-        const int                                _audioBlockFrames;
-        const int                                _contextFrames;
-        const int                                _totalFrames;
-        const int                                _chunkCount;
-        
-        SharedState&                             _sharedState;
-        VersionTable&                            _versionTable;
-        Executor&                                _executor;
-        SpscQueue<AudioBlock>&                   _readyAudioQueue;
-
-        SpscQueue<Command>                       _commandQueue;
-        std::shared_ptr<const ISchedulingPolicy> _schedulingPolicy;
-
-        std::priority_queue<
-            PendingRenderTile,
-            std::vector<PendingRenderTile>,
-            SchedulingPolicyCompare>             _pendingTiles;
-
-        std::vector<PendingRenderTile>           _reclassificationBuffer;
-        std::vector<CacheEntry>                  _cache;
-        std::vector<std::shared_ptr<RenderJob>>  _activeJobs;
-        
-        std::thread                              _schedulerThread;
-        std::atomic<bool>                        _stopRequested;
-        
-        bool                                     _started;
-        bool                                     _playRequested;
-        bool                                     _backgroundAllowed;
-        bool                                     _pendingClassificationsDirty;
-        
-        int                                      _viewportFirstFrame;
-        int                                      _viewportLastFrame;
-        int                                      _lastClassifiedPlayheadChunk;
-        int                                      _nextFrameToPublish;
-        int                                      _timelineScanCursor;
-
-        long long                                _nextTileSequence;        
+        const SchedulerSettings                      _settings;
+        const int                                    _audioBlockFrames;
+        const int                                    _contextFrames;
+        const int                                    _totalFrames;
+        const int                                    _chunkCount;
+             
+        SharedState&                                 _sharedState;
+        VersionTable&                                _versionTable;
+        Executor&                                    _executor;
+        SpscQueue<AudioBlock>&                       _readyAudioQueue;
+             
+        SpscQueue<Command>                           _commandQueue;
+        std::shared_ptr<const ISchedulingPolicy>     _schedulingPolicy;
+             
+        std::priority_queue<     
+            PendingRenderTile,   
+            std::vector<PendingRenderTile>,  
+            SchedulingPolicyCompare>                 _pendingTiles;
+             
+        std::vector<PendingRenderTile>               _reclassificationBuffer;
+        std::vector<CacheEntry>                      _cache;
+        std::vector<std::shared_ptr<RenderJob>>      _activeJobs;
+             
+        std::thread                                  _schedulerThread;
+        std::atomic<bool>                            _stopRequested;
+             
+        bool                                         _started;
+        bool                                         _playRequested;
+        bool                                         _backgroundAllowed;
+        bool                                         _pendingClassificationsDirty;
+             
+        int                                          _viewportFirstFrame;
+        int                                          _viewportLastFrame;
+        int                                          _lastClassifiedPlayheadChunk;
+        int                                          _nextFrameToPublish;
+        int                                          _timelineScanCursor;
+             
+        long long                                    _nextTileSequence;        
     };
 
 } // namespace anasa
