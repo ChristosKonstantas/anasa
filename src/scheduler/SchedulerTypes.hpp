@@ -70,9 +70,7 @@ namespace anasa
     {
         std::shared_ptr<RenderJob> job;
         int                        tileIndex = 0;
-        RenderPriority             priority = RenderPriority::Background;
-        int                        deadlineFrame = -1;
-        int                        distanceInFrames = 0;
+        RenderClassification       classification;
         long long                  sequence = 0;
     };
 

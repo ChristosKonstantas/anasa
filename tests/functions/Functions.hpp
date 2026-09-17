@@ -148,10 +148,10 @@ namespace anasa::functions
     inline PendingRenderTile makeTile(RenderPriority priority, long long sequence, int deadlineFrame = -1, int distanceInFrames = 0)
     {
         PendingRenderTile tile;
-        tile.priority = priority;
+        tile.classification.priority = priority;
         tile.sequence = sequence;
-        tile.deadlineFrame = deadlineFrame;
-        tile.distanceInFrames = distanceInFrames;
+        tile.classification.deadlineFrame = deadlineFrame;
+        tile.classification.distanceInFrames = distanceInFrames;
         return tile;
     }
 

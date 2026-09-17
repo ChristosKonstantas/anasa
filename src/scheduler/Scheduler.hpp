@@ -54,6 +54,7 @@ namespace anasa
                             
         static std::size_t                           validateCommandQueueSlots(int commandQueueSlots);
         static std::vector<PendingRenderTile>        makeReservedTileStorage(int capacity);
+        
         void                                         schedulerLoop();
         void                                         readCommands();
         void                                         handleCommand(Command command);
@@ -67,8 +68,9 @@ namespace anasa
         void                                         dispatchPendingTiles();
         
                             /* Helpers */
-
+        const bool                                   shutdownRequested() const;
         int                                          currentPlaybackFrame() const;
+        void                                         beginAudioGeneration(int targetFrame, bool suspendPlayback);
         void                                         invalidateVersions(int firstFrame, int lastFrame);
         bool                                         cacheIsCurrent(int chunk) const;
         int                                          readyLeadBlocks() const;

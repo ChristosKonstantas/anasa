@@ -218,11 +218,11 @@ namespace anasa
     {
         using namespace std::chrono_literals;
 
-        while (!_stopRequested.load(std::memory_order_acquire) && !_sharedState.stop.load(std::memory_order_acquire))
+        while (!shutdownRequested())
         {
             readCommands();
 
-            if (_stopRequested.load(std::memory_order_acquire) || _sharedState.stop.load(std::memory_order_acquire))
+            if (shutdownRequested())
                 break;
             
             collectFinishedJobs();
@@ -257,77 +257,67 @@ namespace anasa
 
     void Scheduler::handleCommand(Command command)
     {
-        if (command.type == CommandType::Play)
+        switch (command.type)
         {
-            if (!_playRequested)
-                _pendingClassificationsDirty = true;
-            
-            _playRequested = true;
-            return;
-        }
+            case CommandType::Play:
+            {
+                if (!_playRequested)
+                    _pendingClassificationsDirty = true;
+                
+                _playRequested = true;
+                
+                break;
+            }
 
-        if (command.type == CommandType::Pause)
-        {
-            if (_playRequested)
-                _pendingClassificationsDirty = true;
+            case CommandType::Pause:
+            {
+                if (_playRequested)
+                    _pendingClassificationsDirty = true;
 
-            _playRequested = false;
-            _sharedState.playing.store(false, std::memory_order_release);
-            return;
-        }
-
-        if (command.type == CommandType::Seek)
-        {
-            const int target = alignFrameToAudioBlock(clampTimelineFrame(command.firstFrame, _totalFrames), _audioBlockFrames);
-
-            _sharedState.playing.store(false, std::memory_order_relaxed);
-
-            // AudioSimulator reads this after observing the new generation.
-            _sharedState.targetFrame.store(target, std::memory_order_relaxed);
-
-            // Starts a new published stream.
-            _sharedState.generation.fetch_add(1, std::memory_order_acq_rel);
-
-            _pendingClassificationsDirty = true;
-            _nextFrameToPublish = target;
-            return;
-        }
-
-        if (command.type == CommandType::SetViewport)
-        {
-            _viewportFirstFrame = clampTimelineFrame(command.firstFrame, _totalFrames);
-
-            _viewportLastFrame = clampTimelineBoundary(std::max(command.firstFrame, command.lastFrame), _totalFrames);
-
-            if (_viewportLastFrame < _viewportFirstFrame)
-                _viewportLastFrame = _viewportFirstFrame;
-
-            _pendingClassificationsDirty = true;
-            return;
-        }
-
-        if (command.type == CommandType::Edit)
-        {
-            invalidateVersions(command.firstFrame, command.lastFrame);
-
-            const int target = currentPlaybackFrame();
-
-            assert(target % _audioBlockFrames == 0 || target == _totalFrames);
-
-            if (_playRequested && _settings.rebufferOnEdit)
+                _playRequested = false;
                 _sharedState.playing.store(false, std::memory_order_release);
+                
+                break;
+            }
 
-            _sharedState.targetFrame.store(target, std::memory_order_relaxed);
-            _sharedState.generation.fetch_add(1, std::memory_order_acq_rel);
+            case CommandType::Seek:
+            {
+                const int target = alignFrameToAudioBlock(clampTimelineFrame(command.firstFrame, _totalFrames), _audioBlockFrames);
 
-            _nextFrameToPublish = target;
-            return;
-        }
+                beginAudioGeneration(target, true);
 
-        if (command.type == CommandType::Stop)
-        {
-            _sharedState.stop.store(true, std::memory_order_release);
-            _stopRequested.store(true, std::memory_order_release);
+                _pendingClassificationsDirty = true;
+
+                break;
+            }
+
+            case CommandType::SetViewport:
+            {
+                _viewportFirstFrame = clampTimelineFrame(command.firstFrame, _totalFrames);
+
+                _viewportLastFrame = clampTimelineBoundary(std::max(command.firstFrame, command.lastFrame), _totalFrames);
+
+                if (_viewportLastFrame < _viewportFirstFrame)
+                    _viewportLastFrame = _viewportFirstFrame;
+
+                _pendingClassificationsDirty = true;
+                break;
+            }
+
+            case CommandType::Edit:
+            {
+                invalidateVersions(command.firstFrame, command.lastFrame);
+
+                beginAudioGeneration(currentPlaybackFrame(), _playRequested && _settings.rebufferOnEdit);
+                break;
+            }
+
+            case CommandType::Stop:
+            {
+                _sharedState.stop.store(true, std::memory_order_release);
+                _stopRequested.store(true, std::memory_order_release);
+                break;
+            }
         }
     }
 
@@ -359,7 +349,6 @@ namespace anasa
 
             _cache[chunk].version = job->version;
             _cache[chunk].samples = job->samples;
-            _cache[chunk].ready = true;
 
             activeJob.reset();
         }
@@ -526,10 +515,7 @@ namespace anasa
                 classification = classifyChunk(tile.job->chunk, playheadFrame);
             }
 
-            tile.priority = classification.priority;
-            tile.deadlineFrame = classification.deadlineFrame;
-            tile.distanceInFrames = classification.distanceInFrames;
-
+            tile.classification = classification;
             _reclassificationBuffer.push_back(std::move(tile));
         }
 
@@ -614,9 +600,7 @@ namespace anasa
 
             tile.job = jobToSchedule;
             tile.tileIndex = tileIndex;
-            tile.priority = classification.priority;
-            tile.deadlineFrame = classification.deadlineFrame;
-            tile.distanceInFrames = classification.distanceInFrames;
+            tile.classification = classification;
             tile.sequence = _nextTileSequence++;
 
             _pendingTiles.push(std::move(tile));
@@ -629,9 +613,9 @@ namespace anasa
     {
         while (!_pendingTiles.empty() && _executor.queuedTaskCount() < _executor.workerCount())
         {
-            const PendingRenderTile tile = _pendingTiles.top();
+            const PendingRenderTile& tile = _pendingTiles.top();
 
-            if (!_backgroundAllowed && tile.priority == RenderPriority::Background)
+            if (!_backgroundAllowed && tile.classification.priority == RenderPriority::Background)
                 return;
 
             RenderTask task;
@@ -645,7 +629,26 @@ namespace anasa
         }
     }
 
-                             /* Helpers */
+    /* ------------------------------------------- Helpers ------------------------------------------------------------*/
+    const bool Scheduler::shutdownRequested() const
+    {
+        return _stopRequested.load(std::memory_order_acquire) || _sharedState.stop.load(std::memory_order_acquire);
+    }
+
+    void Scheduler::beginAudioGeneration(int targetFrame, bool suspendPlayback)
+    {
+        assert(targetFrame % _audioBlockFrames == 0 || targetFrame == _totalFrames);
+
+        if (suspendPlayback)
+            _sharedState.playing.store(false, std::memory_order_relaxed);
+
+        // Target must be published before generation.
+        _sharedState.targetFrame.store(targetFrame, std::memory_order_relaxed);
+
+        _sharedState.generation.fetch_add(1, std::memory_order_acq_rel);
+
+        _nextFrameToPublish = targetFrame;
+    }
 
     int Scheduler::currentPlaybackFrame() const
     {
@@ -675,7 +678,6 @@ namespace anasa
         for (int chunk = firstChunk; chunk <= lastChunk; ++chunk)
         {
             _versionTable.bump(chunk);
-            _cache[chunk].ready = false;
 
             if (_activeJobs[chunk] != nullptr)
                 _activeJobs[chunk]->cancelled.store(true, std::memory_order_relaxed);
@@ -684,7 +686,7 @@ namespace anasa
 
     bool Scheduler::cacheIsCurrent(int chunk) const
     {
-        return _cache[chunk].ready && _cache[chunk].version == _versionTable.get(chunk);
+        return _cache[chunk].version == _versionTable.get(chunk);
     }
 
     int Scheduler::readyLeadBlocks() const
