@@ -29,8 +29,7 @@ namespace anasa
           _executor(executor),
           _readyAudioQueue(readyAudioQueue),
           _commandQueue(validateCommandQueueSlots(schedulerSettings.commandQueueSlots)),
-          _schedulingPolicy(createSchedulingPolicy(schedulerSettings.policyType)),
-          _pendingTiles(SchedulingPolicyCompare(_schedulingPolicy), makeReservedTileStorage(_settings.maxPendingTiles)),
+          _pendingTiles(SchedulingPolicyCompare(createSchedulingPolicy(schedulerSettings.policyType)), makeReservedTileStorage(_settings.maxPendingTiles)),
           _reclassificationBuffer(makeReservedTileStorage(_settings.maxPendingTiles)),
           _cache(_chunkCount),
           _activeJobs(_chunkCount),
@@ -186,10 +185,13 @@ namespace anasa
             _commandQueue.pop();
 
         for (std::shared_ptr<RenderJob>& job : _activeJobs)
+        {
             if (job != nullptr)
+            {
                 job->cancelled.store(true, std::memory_order_relaxed);
-
-        std::fill(_activeJobs.begin(), _activeJobs.end(), nullptr);
+                job.reset();
+            }
+        }
 
         _playRequested = false;
         _backgroundAllowed = true;
@@ -476,7 +478,7 @@ namespace anasa
         // (3) Scan the timeline round-robin to fill non-urgent queue capacity.
         
         // Non-urgent work may be added only while the total pending size remains below this ceiling.
-        const int nonUrgentLimitInTiles = _settings.maxPendingTiles - _settings.urgentReservedTiles;
+        const int nonUrgentLimitInTiles = pendingTileLimit(RenderPriority::Background);
 
         // The number of chunks to check for background work is limited to avoid spending too much time scanning the entire timeline.
         const int backgroundCheckLimitInChunks = std::min(_chunkCount, _settings.maxPendingTiles / TILES_PER_CHUNK);

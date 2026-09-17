@@ -17,7 +17,6 @@
 #include "render/VersionTable.hpp"
 #include "scheduler/SchedulerSettings.hpp"
 #include "scheduler/SchedulerTypes.hpp"
-#include "scheduler/policies/ISchedulingPolicy.hpp"
 #include "scheduler/policies/SchedulingPolicyCompare.hpp"
 #include "utils/queues/SpscQueue.hpp"
 
@@ -89,8 +88,7 @@ namespace anasa
         SpscQueue<AudioBlock>&                       _readyAudioQueue;
              
         SpscQueue<Command>                           _commandQueue;
-        std::shared_ptr<const ISchedulingPolicy>     _schedulingPolicy;
-             
+
         std::priority_queue<     
             PendingRenderTile,   
             std::vector<PendingRenderTile>,  
