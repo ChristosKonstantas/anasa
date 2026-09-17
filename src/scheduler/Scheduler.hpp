@@ -53,7 +53,7 @@ namespace anasa
                             /* Main functionality */
                             
         static std::size_t                           validateCommandQueueSlots(int commandQueueSlots);
-        static std::vector<PendingRenderTile>        makePendingStorage(int capacity);
+        static std::vector<PendingRenderTile>        makeReservedTileStorage(int capacity);
         void                                         schedulerLoop();
         void                                         readCommands();
         void                                         handleCommand(Command command);
@@ -110,7 +110,7 @@ namespace anasa
         int                                          _viewportLastFrame;
         int                                          _lastClassifiedPlayheadChunk;
         int                                          _nextFrameToPublish;
-        int                                          _timelineScanCursor;
+        int                                          _timelineScanCursorInChunks;
              
         long long                                    _nextTileSequence;        
     };

@@ -30,8 +30,8 @@ namespace anasa
           _readyAudioQueue(readyAudioQueue),
           _commandQueue(validateCommandQueueSlots(schedulerSettings.commandQueueSlots)),
           _schedulingPolicy(createSchedulingPolicy(schedulerSettings.policyType)),
-          _pendingTiles(SchedulingPolicyCompare(_schedulingPolicy), makePendingStorage(_settings.maxPendingTiles)),
-          _reclassificationBuffer(_settings.maxPendingTiles),
+          _pendingTiles(SchedulingPolicyCompare(_schedulingPolicy), makeReservedTileStorage(_settings.maxPendingTiles)),
+          _reclassificationBuffer(makeReservedTileStorage(_settings.maxPendingTiles)),
           _cache(_chunkCount),
           _activeJobs(_chunkCount),
           _stopRequested(false),
@@ -43,7 +43,7 @@ namespace anasa
           _viewportLastFrame(std::min(totalFrames, 2 * audioSettings.sampleRate)),
           _lastClassifiedPlayheadChunk(-1),
           _nextFrameToPublish(0),
-          _timelineScanCursor(0),
+          _timelineScanCursorInChunks(0),
           _nextTileSequence(0)
     {
 
@@ -119,7 +119,7 @@ namespace anasa
         return static_cast<std::size_t>(commandQueueSlots);
     }
 
-    std::vector<PendingRenderTile> Scheduler::makePendingStorage(int capacity)
+    std::vector<PendingRenderTile> Scheduler::makeReservedTileStorage(int capacity)
     {
         if (capacity <= 0)
             throw std::invalid_argument("capacity must be greater than zero");
@@ -193,7 +193,7 @@ namespace anasa
 
         _playRequested = false;
         _backgroundAllowed = true;
-        _timelineScanCursor = 0;
+        _timelineScanCursorInChunks = 0;
         _nextTileSequence = 0;
         _started = false;
         _pendingClassificationsDirty = true;
@@ -452,13 +452,14 @@ namespace anasa
         const int playheadChunk = playheadFrame < _totalFrames ? frameToChunk(playheadFrame) : _chunkCount;
 
         // Rebuild only when priorities may have materially changed.
-        if (_pendingClassificationsDirty || playheadChunk != _lastClassifiedPlayheadChunk)
-        {
+        const bool classificationChanged = _pendingClassificationsDirty || playheadChunk != _lastClassifiedPlayheadChunk;
+
+        // Refresh priority, deadline and distance for _pendingTiles. This is required for Priority scheduling, not for FIFO scheduling.
+        if (_settings.policyType == SchedulingPolicyType::Priority && classificationChanged)
             refreshPendingClassifications(playheadFrame);
 
-            _pendingClassificationsDirty = false;
-            _lastClassifiedPlayheadChunk = playheadChunk;
-        }
+        _pendingClassificationsDirty = false;
+        _lastClassifiedPlayheadChunk = playheadChunk;
 
         // (1) Playback-near chunks (urgent).
         if (_playRequested && playheadFrame < _totalFrames)
@@ -499,9 +500,9 @@ namespace anasa
         while (static_cast<int>(_pendingTiles.size()) + TILES_PER_CHUNK <= nonUrgentLimitInTiles && checkedChunks < backgroundCheckLimitInChunks)
         {
             // scheduleChunk() already classifies the chunk.
-            scheduleChunk(_timelineScanCursor, playheadFrame);
+            scheduleChunk(_timelineScanCursorInChunks, playheadFrame);
 
-            _timelineScanCursor = (_timelineScanCursor + 1) % _chunkCount;
+            _timelineScanCursorInChunks = (_timelineScanCursorInChunks + 1) % _chunkCount;
 
             ++checkedChunks;
         }
@@ -586,7 +587,7 @@ namespace anasa
 
         std::shared_ptr<RenderJob>& currentJob = _activeJobs[chunk];
         
-        // this is well scheduled already, therefore no need to schedule again
+        // this is well scheduled already, therefore no need to schedule again (not nullptr, version is the same, not cancelled)
         if (currentJob != nullptr && currentJob->version == version && !currentJob->cancelled.load(std::memory_order_relaxed))
             return;
 
@@ -596,7 +597,7 @@ namespace anasa
         if (static_cast<int>(_pendingTiles.size()) + TILES_PER_CHUNK > queueLimit)
             return;
 
-        if (currentJob != nullptr)
+        if (currentJob != nullptr) // cancelled or version is different
             currentJob->cancelled.store(true, std::memory_order_relaxed);
 
         // now, activeJob will be replaced with a new job below
