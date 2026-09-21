@@ -82,5 +82,29 @@ namespace anasa
         return _scheduler.post(command);
     }
 
+    PlaybackSnapshot Engine::playbackSnapshot() const
+    {
+        return
+        {
+            _sharedState.playing.load(std::memory_order_acquire),
+            _sharedState.generation.load(std::memory_order_acquire),
+            _sharedState.audioCursorGeneration.load(std::memory_order_acquire),
+            _sharedState.nextUnconsumedFrame.load(std::memory_order_acquire)
+        };
+    }
+
+    EngineMetrics Engine::metrics() const
+    {
+        if (_started)
+        throw std::logic_error("Engine metrics may be read only after stop()");
+
+        return
+        {
+            _audioSimulator.getCallbacksCount(),
+            _audioSimulator.getUnderrunsCount(),
+            _audioSimulator.getCallbackMaxInUs()
+        };
+    }
+
 
 } // namespace anasa

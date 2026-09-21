@@ -2,6 +2,7 @@
 #define ENGINE_HPP
 
 #include "engine/EngineSettings.hpp"
+#include "engine/EngineTypes.hpp"
 #include "utils/queues/SpscQueue.hpp"
 #include "audio-pipeline/AudioConstants.hpp"
 #include "audio-pipeline/AudioTypes.hpp"
@@ -25,7 +26,9 @@ namespace anasa
         void start();
         void stop();
         bool post(Command command);
-
+        PlaybackSnapshot playbackSnapshot() const;
+        EngineMetrics metrics() const;
+        
     private:
         EngineSettings                   _settings;
         int                              _totalFrames;
