@@ -138,12 +138,7 @@ namespace anasa
         _backgroundAllowed = true;
         _pendingClassificationsDirty = true;
         _lastClassifiedPlayheadChunk = -1;
-
-        // the first sample frame that the audio callback has not consumed yet
-        const int nextUnconsumedFrame = currentPlaybackFrame();
-        
-        // the first frame the scheduler has not yet published scheduler starts without an assumed prebuffer
-        _nextFrameToPublish = clampTimelineBoundary(nextUnconsumedFrame, _totalFrames);
+        _nextFrameToPublish = currentPlaybackFrame();
 
         assert(_nextFrameToPublish % _audioBlockFrames == 0 || _nextFrameToPublish == _totalFrames);
 
@@ -252,7 +247,7 @@ namespace anasa
 
             handleCommand(command);
 
-            if (_stopRequested.load(std::memory_order_acquire))
+            if (shutdownRequested())
                 break;
         }
     }
@@ -298,9 +293,6 @@ namespace anasa
                 _viewportFirstFrame = clampTimelineFrame(command.firstFrame, _totalFrames);
 
                 _viewportLastFrame = clampTimelineBoundary(std::max(command.firstFrame, command.lastFrame), _totalFrames);
-
-                if (_viewportLastFrame < _viewportFirstFrame)
-                    _viewportLastFrame = _viewportFirstFrame;
 
                 _pendingClassificationsDirty = true;
                 break;
@@ -632,7 +624,7 @@ namespace anasa
     }
 
     /* ------------------------------------------- Helpers ------------------------------------------------------------*/
-    const bool Scheduler::shutdownRequested() const
+    bool Scheduler::shutdownRequested() const
     {
         return _stopRequested.load(std::memory_order_acquire) || _sharedState.stop.load(std::memory_order_acquire);
     }
@@ -642,9 +634,9 @@ namespace anasa
         assert(targetFrame % _audioBlockFrames == 0 || targetFrame == _totalFrames);
 
         if (suspendPlayback)
-            _sharedState.playing.store(false, std::memory_order_relaxed);
+            _sharedState.playing.store(false, std::memory_order_release);
 
-        // Target must be published before generation.
+        // targetFrame must be published before generation.
         _sharedState.targetFrame.store(targetFrame, std::memory_order_relaxed);
 
         _sharedState.generation.fetch_add(1, std::memory_order_acq_rel);

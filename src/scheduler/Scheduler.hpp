@@ -67,7 +67,7 @@ namespace anasa
         void                                         dispatchPendingTiles();
         
                             /* Helpers */
-        const bool                                   shutdownRequested() const;
+        bool                                         shutdownRequested() const;
         int                                          currentPlaybackFrame() const;
         void                                         beginAudioGeneration(int targetFrame, bool suspendPlayback);
         void                                         invalidateVersions(int firstFrame, int lastFrame);
