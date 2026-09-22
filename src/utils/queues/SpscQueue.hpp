@@ -53,6 +53,14 @@ class SpscQueue : private Alloc // Empty Base Optimization
             }
         }
 
+        SpscQueue(const SpscQueue&) = delete;
+
+        SpscQueue& operator=(const SpscQueue&) = delete;
+        
+        SpscQueue(SpscQueue&&) = delete;
+        
+        SpscQueue& operator=(SpscQueue&&) = delete;
+        
         ~SpscQueue()
         {
             for (std::size_t i = 0; i < _capacity; ++i)
