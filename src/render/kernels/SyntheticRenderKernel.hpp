@@ -5,7 +5,7 @@
 
 namespace anasa
 {
-    class SyntheticRenderKernel : IRenderKernel
+    class SyntheticRenderKernel final : public IRenderKernel
     {
     public:
         SyntheticRenderKernel(int sampleRate, int workIterations);

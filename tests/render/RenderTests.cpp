@@ -12,6 +12,7 @@
 #include "render/RenderSettings.hpp"
 #include "render/RenderTypes.hpp"
 #include "render/VersionTable.hpp"
+#include "render/kernels/SyntheticRenderKernel.hpp"
 
 #ifdef enable_benchmarks
 #include "benchmarks/Benchmark.hpp"
@@ -19,6 +20,7 @@
 
 #include "functions/Functions.hpp"
 #include "TestVersionReader.hpp"
+#include "TestRenderKernel.hpp"
 
 namespace anasa
 {
@@ -102,10 +104,58 @@ namespace anasa
     }
 
     /************************************ RENDERER TESTS ************************************/
+    TEST_CASE("Renderer: injected kernel receives absolute frames and content version")
+    {
+        VersionTable versions(4);
+        versions.bump(2);
+        TestRenderKernel kernel;
+        Renderer renderer(kernel, versions);
+        RenderJob job;
+        functions::initializeJob(job, versions, 2);
+        std::atomic<bool> stopRequested{false};
+        bool expectedCompletion = true;
+
+        SECTION("current job renders") {}
+        SECTION("shutdown skips the kernel")
+        {
+            stopRequested.store(true, std::memory_order_release);
+            expectedCompletion = false;
+        }
+        SECTION("cancelled job skips the kernel")
+        {
+            job.cancelled.store(true, std::memory_order_relaxed);
+            expectedCompletion = false;
+        }
+        SECTION("obsolete job skips the kernel")
+        {
+            versions.bump(2);
+            expectedCompletion = false;
+        }
+
+        constexpr int TILE_INDEX = 3;
+        REQUIRE(renderer.renderTile(job, TILE_INDEX, stopRequested) == expectedCompletion);
+        REQUIRE(kernel.callCount() == (expectedCompletion ? TILE_FRAMES : 0));
+        REQUIRE(job.cancelled.load(std::memory_order_relaxed) == !expectedCompletion);
+        REQUIRE(job.tilesRemaining.load(std::memory_order_relaxed) == TILES_PER_CHUNK);
+        REQUIRE(job.chunk == 2);
+        REQUIRE(job.version == 2);
+
+        for (int frame = 0; frame < CHUNK_FRAMES; ++frame)
+        {
+            CAPTURE(frame);
+            float expected = functions::UNTOUCHED_SAMPLE;
+
+            if (expectedCompletion && frame >= TILE_INDEX * TILE_FRAMES && frame < (TILE_INDEX + 1) * TILE_FRAMES)
+                expected = static_cast<float>(2 * CHUNK_FRAMES + frame) / 16384.0f + 2.0f / 128.0f;
+
+            REQUIRE(job.samples[frame] == expected);
+        }
+    }
     TEST_CASE("Renderer: renders through tile and version-reader interfaces")
     {
         TestVersionReader versions(1000);
-        Renderer renderer(48000, functions::makeTestRenderSettings(), versions);
+        SyntheticRenderKernel kernel(48000, functions::makeTestRenderSettings().workIterations);
+        Renderer renderer(kernel, versions);
         const ITileRenderer& tileRenderer = renderer;
         RenderJob job;
         job.chunk = 0;
@@ -133,7 +183,8 @@ namespace anasa
     TEST_CASE("Renderer: observes version-reader invalidation during rendering")
     {
         TestVersionReader versions(2);
-        Renderer renderer(48000, functions::makeTestRenderSettings(), versions);
+        SyntheticRenderKernel kernel(48000, functions::makeTestRenderSettings().workIterations);
+        Renderer renderer(kernel, versions);
         const ITileRenderer& tileRenderer = renderer;
         RenderJob job;
         job.chunk = 0;
@@ -161,7 +212,8 @@ namespace anasa
         // Allow the entry check and every periodic check to see the current version.
         const int currentReads = 1 + (TILE_FRAMES + CANCELLATION_CHECK_FRAMES - 1) / CANCELLATION_CHECK_FRAMES;
         TestVersionReader versions(currentReads);
-        Renderer renderer(48000, functions::makeTestRenderSettings(), versions);
+        SyntheticRenderKernel kernel(48000, functions::makeTestRenderSettings().workIterations);
+        Renderer renderer(kernel, versions);
         RenderJob job;
         job.chunk = 0;
         job.version = 7;
@@ -179,24 +231,11 @@ namespace anasa
             REQUIRE(job.samples[frame] == functions::UNTOUCHED_SAMPLE);
     }
 
-    TEST_CASE("Renderer: rejects invalid settings")
-    {
-        VersionTable versions(1);
-        RenderSettings settings = functions::makeTestRenderSettings();
-
-        REQUIRE_THROWS_AS(Renderer(0, settings, versions), std::invalid_argument);
-        REQUIRE_THROWS_AS(Renderer(-48000, settings, versions), std::invalid_argument);
-
-        settings.workIterations = -1;
-
-        REQUIRE_THROWS_AS(Renderer(48000, settings, versions), std::invalid_argument);
-    }
-
     TEST_CASE("Renderer: rejects invalid tile and chunk indices")
     {
         VersionTable versions(4);
-        RenderSettings settings = functions::makeTestRenderSettings();
-        Renderer renderer(48000, settings, versions);
+        SyntheticRenderKernel kernel(48000, functions::makeTestRenderSettings().workIterations);
+        Renderer renderer(kernel, versions);
 
         RenderJob job;
         functions::initializeJob(job, versions, 1);
@@ -217,8 +256,8 @@ namespace anasa
     TEST_CASE("Renderer: writes only the requested tile")
     {
         VersionTable versions(4);
-        RenderSettings settings = functions::makeTestRenderSettings();
-        Renderer renderer(48000, settings, versions);
+        SyntheticRenderKernel kernel(48000, functions::makeTestRenderSettings().workIterations);
+        Renderer renderer(kernel, versions);
 
         RenderJob job;
         functions::initializeJob(job, versions, 1);
@@ -262,8 +301,8 @@ namespace anasa
     TEST_CASE("Renderer: identical inputs produce identical output")
     {
         VersionTable versions(4);
-        RenderSettings settings = functions::makeTestRenderSettings();
-        Renderer renderer(48000, settings, versions);
+        SyntheticRenderKernel kernel(48000, functions::makeTestRenderSettings().workIterations);
+        Renderer renderer(kernel, versions);
 
         RenderJob firstJob;
         RenderJob secondJob;
@@ -290,8 +329,8 @@ namespace anasa
     TEST_CASE("Renderer: stop request cancels before rendering")
     {
         VersionTable versions(4);
-        RenderSettings settings = functions::makeTestRenderSettings();
-        Renderer renderer(48000, settings, versions);
+        SyntheticRenderKernel kernel(48000, functions::makeTestRenderSettings().workIterations);
+        Renderer renderer(kernel, versions);
 
         RenderJob job;
         functions::initializeJob(job, versions, 1);
@@ -308,8 +347,8 @@ namespace anasa
     TEST_CASE("Renderer: obsolete version cancels before rendering")
     {
         VersionTable versions(4);
-        RenderSettings settings = functions::makeTestRenderSettings();
-        Renderer renderer(48000, settings, versions);
+        SyntheticRenderKernel kernel(48000, functions::makeTestRenderSettings().workIterations);
+        Renderer renderer(kernel, versions);
 
         RenderJob job;
         functions::initializeJob(job, versions, 1);
@@ -330,8 +369,8 @@ namespace anasa
     {
         // Same logic as TEST_CASE - VersionTable: concurrent bumps are not lost
         VersionTable versions(4);
-        RenderSettings settings = functions::makeTestRenderSettings();
-        Renderer renderer(48000, settings, versions);
+        SyntheticRenderKernel kernel(48000, functions::makeTestRenderSettings().workIterations);
+        Renderer renderer(kernel, versions);
 
         RenderJob job;
         functions::initializeJob(job, versions, 1);
@@ -386,7 +425,8 @@ namespace anasa
     {
         VersionTable versions(4);
         RenderSettings settings = functions::makeTestRenderSettings(300);
-        Renderer renderer(48000, settings, versions);
+        SyntheticRenderKernel kernel(48000, settings.workIterations);
+        Renderer renderer(kernel, versions);
         std::atomic<bool> stopRequested{false};
 
         RenderJob job;

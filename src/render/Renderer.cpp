@@ -6,8 +6,8 @@
 
 namespace anasa
 {
-    Renderer::Renderer(int sampleRate, const RenderSettings& renderSettings, const IChunkVersionReader& versionTable)
-        : _kernel(sampleRate, renderSettings.workIterations),
+    Renderer::Renderer(const IRenderKernel& kernel, const IChunkVersionReader& versionTable)
+        : _kernel(kernel),
           _versionTable(versionTable),
           _renderCancellation(_versionTable)
     {}

@@ -14,6 +14,7 @@
 #include "execution/Executor.hpp"
 #include "scheduler/Scheduler.hpp"
 #include "scheduler/SchedulerTypes.hpp"
+#include "render/kernels/SyntheticRenderKernel.hpp"
 
 namespace anasa
 {
@@ -37,7 +38,8 @@ namespace anasa
         VersionTable                     _versionTable; 
         SharedState                      _sharedState;
         SpscQueue<AudioBlock>            _readyAudioQueue;
-
+        
+        SyntheticRenderKernel            _renderKernel;
         Renderer                         _renderer;
         Executor                         _executor;
         Scheduler                        _scheduler;

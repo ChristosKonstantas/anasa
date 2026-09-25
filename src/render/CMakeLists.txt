@@ -4,6 +4,7 @@ anasa_add_module(
     SOURCES
         IChunkVersionReader.hpp
         ITileRenderer.hpp
+        kernels/IRenderKernel.hpp
         RenderConstants.hpp
         RenderTypes.hpp
 )
@@ -19,7 +20,6 @@ anasa_add_module(
         VersionTable.hpp
         RenderCancellation.cpp
         RenderCancellation.hpp
-        kernels/IRenderKernel.hpp
         kernels/SyntheticRenderKernel.cpp
         kernels/SyntheticRenderKernel.hpp
 )

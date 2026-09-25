@@ -15,7 +15,7 @@ namespace anasa
         REQUIRE_THROWS_AS(SyntheticRenderKernel(48000, -1), std::invalid_argument);
     }
 
-    TEST_CASE("SyntheticRenderKernel: preserves R1a sample output")
+    TEST_CASE("SyntheticRenderKernel: preserves sample output")
     {
         struct SampleCase
         {
@@ -26,7 +26,6 @@ namespace anasa
             float expected;
         };
 
-        // Reference samples recorded from R1a commit 1d94e85.
         const std::array<SampleCase, 6> cases
         {{
             {48000,   0,    0,  1,  0.0f},
@@ -46,4 +45,5 @@ namespace anasa
             REQUIRE(std::abs(actual - sample.expected) <= 0.000001f);
         }
     }
+
 } // namespace anasa

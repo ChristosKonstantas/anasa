@@ -1,4 +1,6 @@
 #include "scheduler/Scheduler.hpp"
+#include "render/Renderer.hpp"
+#include "render/kernels/SyntheticRenderKernel.hpp"
 
 namespace anasa
 {
@@ -16,7 +18,8 @@ namespace anasa
                 sharedState(),
                 versionTable(CHUNK_COUNT),
                 readyAudioQueue(READY_AUDIO_QUEUE_SLOTS),
-                renderer(audioSettings.sampleRate, renderSettings, versionTable),
+                renderKernel(audioSettings.sampleRate, renderSettings.workIterations),
+                renderer(renderKernel, versionTable),
                 executor(executorSettings, renderer),
                 scheduler(schedulerSettings, audioSettings, renderSettings, TOTAL_FRAMES, sharedState, 
                           versionTable, executor, readyAudioQueue)
@@ -50,6 +53,7 @@ namespace anasa
         VersionTable versionTable;
         SpscQueue<AudioBlock> readyAudioQueue;
 
+        SyntheticRenderKernel renderKernel;
         Renderer renderer;
         Executor executor;
         Scheduler scheduler;
