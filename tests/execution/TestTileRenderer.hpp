@@ -8,7 +8,6 @@ namespace anasa
 {
     enum class RenderOutcome { Complete, Cancel, Throw };
 
-    // This executable does not include or link the concrete Renderer.
     class TestTileRenderer final : public ITileRenderer
     {
     public:

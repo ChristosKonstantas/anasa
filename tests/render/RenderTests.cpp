@@ -155,6 +155,30 @@ namespace anasa
         for (int frame = TILE_FRAMES; frame < CHUNK_FRAMES; ++frame)
             REQUIRE(job.samples[frame] == functions::UNTOUCHED_SAMPLE);
     }
+
+    TEST_CASE("Renderer: final cancellation check rejects a fully written obsolete tile")
+    {
+        // Allow the entry check and every periodic check to see the current version.
+        const int currentReads = 1 + (TILE_FRAMES + CANCELLATION_CHECK_FRAMES - 1) / CANCELLATION_CHECK_FRAMES;
+        TestVersionReader versions(currentReads);
+        Renderer renderer(48000, functions::makeTestRenderSettings(), versions);
+        RenderJob job;
+        job.chunk = 0;
+        job.version = 7;
+        job.samples.fill(functions::UNTOUCHED_SAMPLE);
+        std::atomic<bool> stopRequested{false};
+
+        REQUIRE_FALSE(renderer.renderTile(job, 0, stopRequested));
+        REQUIRE(job.cancelled.load(std::memory_order_relaxed));
+        REQUIRE(job.tilesRemaining.load(std::memory_order_relaxed) == TILES_PER_CHUNK);
+
+        for (int frame = 0; frame < TILE_FRAMES; ++frame)
+            REQUIRE(job.samples[frame] != functions::UNTOUCHED_SAMPLE);
+
+        for (int frame = TILE_FRAMES; frame < CHUNK_FRAMES; ++frame)
+            REQUIRE(job.samples[frame] == functions::UNTOUCHED_SAMPLE);
+    }
+
     TEST_CASE("Renderer: rejects invalid settings")
     {
         VersionTable versions(1);

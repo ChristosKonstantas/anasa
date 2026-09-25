@@ -17,6 +17,11 @@ anasa_add_module(
         RenderSettings.hpp
         VersionTable.cpp
         VersionTable.hpp
+        RenderCancellation.cpp
+        RenderCancellation.hpp
+        kernels/IRenderKernel.hpp
+        kernels/SyntheticRenderKernel.cpp
+        kernels/SyntheticRenderKernel.hpp
 )
 
 target_link_libraries(renderer PUBLIC render-contracts)

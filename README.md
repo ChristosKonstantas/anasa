@@ -77,7 +77,7 @@ flowchart TD
 
     Versions["Chunk versions: _versionTable"]
 
-    Versions -->|"Renderer::shouldCancel()"| Render
+    Versions -->|"RenderCancellation::shouldCancel()"| Render
 
        Collect["Scheduler::collectFinishedJobs()"]
     Invalidate["Scheduler::invalidateVersions()"]

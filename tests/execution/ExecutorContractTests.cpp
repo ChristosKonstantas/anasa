@@ -17,6 +17,10 @@ namespace anasa
     TEST_CASE("Executor contract: injected renderer controls output cancellation and failure")
     {
         RenderOutcome outcome = RenderOutcome::Complete;
+        
+        SECTION("successful tiles supply their own samples") {}
+        SECTION("cancelled tiles complete a cancelled job") { outcome = RenderOutcome::Cancel; }
+        SECTION("render exceptions complete a cancelled job") { outcome = RenderOutcome::Throw; }
 
         TestTileRenderer renderer(outcome);
         ExecutorSettings settings;

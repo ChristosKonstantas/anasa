@@ -8,6 +8,8 @@ if(BUILD_TESTS)
         audio-pipeline/AudioSimulatorTests.cpp
         render/TestVersionReader.cpp
         render/RenderTests.cpp
+        render/SyntheticRenderKernelTests.cpp
+        render/RenderCancellationTests.cpp
         execution/TestTileRenderer.cpp
         execution/ExecutorContractTests.cpp
         execution/ExecutorTests.cpp
