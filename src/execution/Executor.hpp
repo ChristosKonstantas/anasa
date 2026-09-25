@@ -9,6 +9,7 @@
 #include <thread>
 #include <vector>
 
+#include "execution/IRenderExecutor.hpp"
 #include "execution/ExecutorSettings.hpp"
 #include "execution/ExecutorTypes.hpp"
 #include "render/ITileRenderer.hpp"
@@ -30,19 +31,19 @@ namespace anasa
     /* not intended to be called concurrently from different threads.            */
     /*---------------------------------------------------------------------------*/
 
-    class Executor
+    class Executor final : public IRenderExecutor
     {
     public:
         // The renderer must outlive the executor, including every worker thread.
         Executor(const ExecutorSettings& settings, const ITileRenderer& renderer);
-        ~Executor();
+        ~Executor() override;
 
         void                                   start(); // Starts the fixed worker pool. Repeated calls have no effect.
         void                                   stop();  // Cancel queued work, request cancellation of running work and joins every worker.
-        bool                                   submit(RenderTask task); // Attempts to add one tile task to the bounded FIFO execution queue.
-        bool                                   popCompleted(std::shared_ptr<RenderJob>& job); // Collect completed jobs. Moves one fully completed RenderJob to the caller.
-        int                                    workerCount() const; // Returns the fixed number of configured worker threads.
-        int                                    queuedTaskCount(); // Executor queue inspection providing task count
+        bool                                   submit(RenderTask task) override; // Attempts to add one tile task to the bounded FIFO execution queue.
+        bool                                   popCompleted(std::shared_ptr<RenderJob>& job) override; // Collect completed jobs. Moves one fully completed RenderJob to the caller.
+        int                                    workerCount() const override; // Returns the fixed number of configured worker threads.
+        int                                    queuedTaskCount() override; // Executor queue inspection providing task count
     
     private:
         void                                   workerLoop(); // Waits for work, removes one FIFO task, renders outside the queue mutex and exits when shutdown is requested.

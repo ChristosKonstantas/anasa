@@ -1,6 +1,7 @@
 #include "scheduler/Scheduler.hpp"
 #include "render/Renderer.hpp"
 #include "render/kernels/SyntheticRenderKernel.hpp"
+#include "execution/Executor.hpp"
 
 namespace anasa
 {

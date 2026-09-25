@@ -1,7 +1,11 @@
 #ifndef FUNCTIONS_HPP
 #define FUNCTIONS_HPP
 
+#include <algorithm>
 #include <chrono>
+#include <memory>
+#include <thread>
+
 #include "utils/queues/SpscQueue.hpp"
 #include "render/RenderConstants.hpp"
 #include "render/RenderSettings.hpp"
@@ -11,7 +15,7 @@
 #include "execution/ExecutorConstants.hpp"
 #include "execution/ExecutorSettings.hpp"
 #include "execution/ExecutorTypes.hpp"
-#include "execution/Executor.hpp"
+#include "execution/IRenderExecutor.hpp"
 #include "scheduler/SchedulerTypes.hpp"
 #include "audio-pipeline/AudioTypes.hpp"
 
@@ -66,7 +70,7 @@ namespace anasa::functions
         job.samples.fill(UNTOUCHED_SAMPLE);
     }
 
-    inline bool waitForCompletedJob(Executor& executor, std::shared_ptr<RenderJob>& completedJob, std::chrono::milliseconds timeout = 2000ms)
+    inline bool waitForCompletedJob(IRenderExecutor& executor, std::shared_ptr<RenderJob>& completedJob, std::chrono::milliseconds timeout = 2000ms)
     {
         const auto deadline = std::chrono::steady_clock::now() + timeout;
 

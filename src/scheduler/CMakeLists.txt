@@ -17,4 +17,4 @@ anasa_add_module(
         policies/SchedulingPolicyFactory.cpp
 )
 
-target_link_libraries(scheduler PUBLIC audio-pipeline executor playback queues renderer)
+target_link_libraries(scheduler PUBLIC audio-pipeline executor-contracts playback queues renderer)

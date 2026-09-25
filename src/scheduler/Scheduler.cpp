@@ -18,7 +18,7 @@
 namespace anasa
 {
     Scheduler::Scheduler(const SchedulerSettings& schedulerSettings, const AudioSettings& audioSettings, const RenderSettings& renderSettings,
-                         int totalFrames, SharedState& sharedState, VersionTable& versionTable, Executor& executor, SpscQueue<AudioBlock>& readyAudioQueue)
+                         int totalFrames, SharedState& sharedState, VersionTable& versionTable, IRenderExecutor& executor, SpscQueue<AudioBlock>& readyAudioQueue)
         : _settings(schedulerSettings),
           _audioBlockFrames(audioSettings.audioBlockFrames),
           _contextFrames(renderSettings.contextFrames),

@@ -10,7 +10,7 @@
 
 #include "audio-pipeline/AudioSettings.hpp"
 #include "audio-pipeline/AudioTypes.hpp"
-#include "execution/Executor.hpp"
+#include "execution/IRenderExecutor.hpp"
 #include "playback/PlaybackState.hpp"
 #include "render/RenderSettings.hpp"
 #include "render/RenderTypes.hpp"
@@ -38,7 +38,7 @@ namespace anasa
     {
     public:
         Scheduler(const SchedulerSettings& schedulerSettings, const AudioSettings& audioSettings, const RenderSettings& renderSettings, 
-                  int totalFrames, SharedState& sharedState, VersionTable& versionTable, Executor& executor, SpscQueue<AudioBlock>& readyAudioQueue);
+                  int totalFrames, SharedState& sharedState, VersionTable& versionTable, IRenderExecutor& executor, SpscQueue<AudioBlock>& readyAudioQueue);
 
         ~Scheduler();
 
@@ -84,7 +84,7 @@ namespace anasa
              
         SharedState&                                 _sharedState;
         VersionTable&                                _versionTable;
-        Executor&                                    _executor;
+        IRenderExecutor&                             _executor;
         SpscQueue<AudioBlock>&                       _readyAudioQueue;
              
         SpscQueue<Command>                           _commandQueue;
