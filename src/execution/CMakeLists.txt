@@ -8,4 +8,4 @@ anasa_add_module(
         Executor.hpp
 )
 
-target_link_libraries(executor PUBLIC renderer)
+target_link_libraries(executor PUBLIC render-contracts)

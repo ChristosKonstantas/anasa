@@ -11,7 +11,7 @@
 
 #include "execution/ExecutorSettings.hpp"
 #include "execution/ExecutorTypes.hpp"
-#include "render/Renderer.hpp"
+#include "render/ITileRenderer.hpp"
 
 namespace anasa
 {
@@ -33,7 +33,8 @@ namespace anasa
     class Executor
     {
     public:
-        Executor(const ExecutorSettings& settings, Renderer& renderer);
+        // The renderer must outlive the executor, including every worker thread.
+        Executor(const ExecutorSettings& settings, const ITileRenderer& renderer);
         ~Executor();
 
         void                                   start(); // Starts the fixed worker pool. Repeated calls have no effect.
@@ -47,8 +48,7 @@ namespace anasa
         void                                   workerLoop(); // Waits for work, removes one FIFO task, renders outside the queue mutex and exits when shutdown is requested.
         
         ExecutorSettings                       _settings;
-        Renderer&                              _renderer;
-
+        const ITileRenderer&                   _renderer;
         std::vector<std::thread>               _workers;
 
         std::queue<RenderTask>                 _renderTasksQueue; // 1 Scheduler (producer) / Many workers (consumers) -> SPMC

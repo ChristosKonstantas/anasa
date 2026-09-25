@@ -6,10 +6,14 @@ if(BUILD_TESTS)
         benchmarks/Benchmark.hpp
         utils/queues/SpscQueueTests.cpp
         audio-pipeline/AudioSimulatorTests.cpp
+        render/TestVersionReader.cpp
         render/RenderTests.cpp
+        execution/TestTileRenderer.cpp
+        execution/ExecutorContractTests.cpp
         execution/ExecutorTests.cpp
         scheduler/SchedulingPolicyTests.cpp
         scheduler/SchedulerIntegrationTests.cpp
+
     )
 
     add_executable(tests ${TEST_SOURCES})

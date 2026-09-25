@@ -18,6 +18,7 @@
 #endif
 
 #include "functions/Functions.hpp"
+#include "TestVersionReader.hpp"
 
 namespace anasa
 {
@@ -25,11 +26,12 @@ namespace anasa
     TEST_CASE("VersionTable: initializes every chunk with version one")
     {
         VersionTable versions(4);
+        const IChunkVersionReader& reader = versions;
 
-        REQUIRE(versions.count() == 4);
+        REQUIRE(reader.count() == 4);
 
-        for (int chunk = 0; chunk < versions.count(); ++chunk)
-            REQUIRE(versions.get(chunk) == 1);
+        for (int chunk = 0; chunk < reader.count(); ++chunk)
+            REQUIRE(reader.get(chunk) == 1);
     }
 
     TEST_CASE("VersionTable: bump changes only the selected chunk")
@@ -100,7 +102,59 @@ namespace anasa
     }
 
     /************************************ RENDERER TESTS ************************************/
+    TEST_CASE("Renderer: renders through tile and version-reader interfaces")
+    {
+        TestVersionReader versions(1000);
+        Renderer renderer(48000, functions::makeTestRenderSettings(), versions);
+        const ITileRenderer& tileRenderer = renderer;
+        RenderJob job;
+        job.chunk = 0;
+        job.version = 7;
+        job.samples.fill(functions::UNTOUCHED_SAMPLE);
+        std::atomic<bool> stopRequested{false};
 
+        REQUIRE(tileRenderer.renderTile(job, 1, stopRequested));
+        REQUIRE_FALSE(job.cancelled.load(std::memory_order_relaxed));
+        REQUIRE(job.tilesRemaining.load(std::memory_order_relaxed) == TILES_PER_CHUNK);
+
+        for (int frame = 0; frame < CHUNK_FRAMES; ++frame)
+        {
+            CAPTURE(frame);
+            if (frame >= TILE_FRAMES && frame < 2 * TILE_FRAMES)
+            {
+                REQUIRE(job.samples[frame] != functions::UNTOUCHED_SAMPLE);
+                REQUIRE(std::isfinite(job.samples[frame]));
+            }
+            else
+                REQUIRE(job.samples[frame] == functions::UNTOUCHED_SAMPLE);
+        }
+    }
+
+    TEST_CASE("Renderer: observes version-reader invalidation during rendering")
+    {
+        TestVersionReader versions(2);
+        Renderer renderer(48000, functions::makeTestRenderSettings(), versions);
+        const ITileRenderer& tileRenderer = renderer;
+        RenderJob job;
+        job.chunk = 0;
+        job.version = 7;
+        job.samples.fill(functions::UNTOUCHED_SAMPLE);
+        std::atomic<bool> stopRequested{false};
+
+        REQUIRE_FALSE(tileRenderer.renderTile(job, 0, stopRequested));
+        REQUIRE(job.cancelled.load(std::memory_order_relaxed));
+        REQUIRE(job.tilesRemaining.load(std::memory_order_relaxed) == TILES_PER_CHUNK);
+
+        int writtenFrames = 0;
+        for (int frame = 0; frame < TILE_FRAMES; ++frame)
+            if (job.samples[frame] != functions::UNTOUCHED_SAMPLE)
+                ++writtenFrames;
+
+        REQUIRE(writtenFrames > 0);
+        REQUIRE(writtenFrames < TILE_FRAMES);
+        for (int frame = TILE_FRAMES; frame < CHUNK_FRAMES; ++frame)
+            REQUIRE(job.samples[frame] == functions::UNTOUCHED_SAMPLE);
+    }
     TEST_CASE("Renderer: rejects invalid settings")
     {
         VersionTable versions(1);

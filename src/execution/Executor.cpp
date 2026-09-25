@@ -8,7 +8,7 @@
 namespace anasa
 {
 
-    Executor::Executor(const ExecutorSettings& settings, Renderer& renderer)
+    Executor::Executor(const ExecutorSettings& settings, const ITileRenderer& renderer)
         : _settings(settings),
           _renderer(renderer),
           _stopRequested(false),

@@ -9,7 +9,7 @@ namespace anasa
 {
 constexpr float PI = 3.14159265358979323846f;
 
-Renderer::Renderer(int sampleRate, const RenderSettings& renderSettings, VersionTable& versionTable)
+Renderer::Renderer(int sampleRate, const RenderSettings& renderSettings, const IChunkVersionReader& versionTable)
     : _sampleRate(sampleRate),
       _workIterations(renderSettings.workIterations),
       _versionTable(versionTable)
