@@ -14,7 +14,7 @@
 #include "benchmarks/Benchmark.hpp"
 #include "utils/queues/SpscQueueOld1.hpp"
 #include "utils/queues/SpscQueueOld2.hpp"
-#include "audio-pipeline/AudioTypes.hpp"
+#include "audio/AudioTypes.hpp"
 
 #endif // enable_benchmarks
 

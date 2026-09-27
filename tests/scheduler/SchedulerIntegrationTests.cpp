@@ -5,9 +5,9 @@
 #include <utility>
 
 #include "utils/queues/SpscQueue.hpp"
-#include "audio-pipeline/AudioConstants.hpp"
-#include "audio-pipeline/AudioSettings.hpp"
-#include "audio-pipeline/AudioTypes.hpp"
+#include "audio/AudioConstants.hpp"
+#include "audio/AudioSettings.hpp"
+#include "audio/AudioTypes.hpp"
 #include "execution/Executor.hpp"
 #include "execution/ExecutorSettings.hpp"
 #include "playback/PlaybackState.hpp"

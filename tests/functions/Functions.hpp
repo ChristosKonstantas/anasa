@@ -17,7 +17,7 @@
 #include "execution/ExecutorTypes.hpp"
 #include "execution/IRenderExecutor.hpp"
 #include "scheduler/SchedulerTypes.hpp"
-#include "audio-pipeline/AudioTypes.hpp"
+#include "audio/AudioTypes.hpp"
 
 namespace anasa::functions
 {

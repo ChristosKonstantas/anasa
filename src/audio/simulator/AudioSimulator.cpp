@@ -1,5 +1,5 @@
 #include "AudioSimulator.hpp"
-#include "audio-pipeline/AudioConstants.hpp"
+#include "audio/AudioConstants.hpp"
 
 #include <cassert>
 #include <chrono>

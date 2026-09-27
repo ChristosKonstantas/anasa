@@ -4,7 +4,7 @@
 #include <array>
 #include <atomic>
 
-#include "audio-pipeline/AudioConstants.hpp"
+#include "audio/AudioConstants.hpp"
 
 namespace anasa
 {

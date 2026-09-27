@@ -8,8 +8,8 @@
 #include <thread>
 #include <vector>
 
-#include "audio-pipeline/AudioSettings.hpp"
-#include "audio-pipeline/AudioTypes.hpp"
+#include "audio/AudioSettings.hpp"
+#include "audio/AudioTypes.hpp"
 #include "execution/IRenderExecutor.hpp"
 #include "playback/PlaybackState.hpp"
 #include "render/RenderSettings.hpp"

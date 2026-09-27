@@ -5,8 +5,8 @@
 #include <thread>
 
 #include "utils/queues/SpscQueue.hpp"
-#include "audio-pipeline/AudioSettings.hpp"
-#include "audio-pipeline/AudioTypes.hpp"
+#include "audio/AudioSettings.hpp"
+#include "audio/AudioTypes.hpp"
 #include "playback/PlaybackState.hpp"
 #include "playback/PlaybackTimeline.hpp"
 

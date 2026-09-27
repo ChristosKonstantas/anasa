@@ -1,8 +1,8 @@
 anasa_add_module(
     audio-pipeline
     SOURCES
-        AudioSimulator.hpp
-        AudioSimulator.cpp
+        simulator/AudioSimulator.hpp
+        simulator/AudioSimulator.cpp
         AudioConstants.hpp
         AudioSettings.hpp
         AudioTypes.hpp

@@ -5,7 +5,7 @@ if(BUILD_TESTS)
         functions/Functions.hpp
         benchmarks/Benchmark.hpp
         utils/queues/SpscQueueTests.cpp
-        audio-pipeline/AudioSimulatorTests.cpp
+        audio/AudioSimulatorTests.cpp
         render/TestVersionReader.cpp
         render/TestRenderKernel.cpp
         render/RenderTests.cpp

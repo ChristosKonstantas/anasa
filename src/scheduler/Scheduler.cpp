@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-#include "audio-pipeline/AudioConstants.hpp"
+#include "audio/AudioConstants.hpp"
 #include "playback/PlaybackTimeline.hpp"
 #include "render/RenderConstants.hpp"
 #include "render/RenderFrameUtils.hpp"
