@@ -6,6 +6,7 @@ if(BUILD_TESTS)
         benchmarks/Benchmark.hpp
         utils/queues/SpscQueueTests.cpp
         audio/AudioSimulatorTests.cpp
+        audio/AudioBlockProcessorTests.cpp
         render/TestVersionReader.cpp
         render/TestRenderKernel.cpp
         render/RenderTests.cpp
@@ -36,7 +37,8 @@ if(BUILD_TESTS)
                           Catch2::Catch2WithMain
                           funcs
                           queues
-                          audio-pipeline
+                          audio-processing 
+                          audio-simulator
                           playback
                           renderer
                           executor

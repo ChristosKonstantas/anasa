@@ -7,6 +7,7 @@
 #include "audio/AudioConstants.hpp"
 #include "audio/AudioTypes.hpp"
 #include "audio/simulator/AudioSimulator.hpp"
+#include "audio/AudioBlockProcessor.hpp"
 #include "playback/PlaybackState.hpp"
 #include "render/VersionTable.hpp"
 #include "render/RenderConstants.hpp"
@@ -43,6 +44,7 @@ namespace anasa
         Renderer                         _renderer;
         Executor                         _executor;
         Scheduler                        _scheduler;
+        AudioBlockProcessor              _audioBlockProcessor;
         AudioSimulator                   _audioSimulator;
 
         bool                             _started;

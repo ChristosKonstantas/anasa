@@ -1,27 +1,39 @@
 #include "AudioSimulator.hpp"
 #include "audio/AudioConstants.hpp"
 
-#include <cassert>
+#include <stdexcept>
 #include <chrono>
 #include <thread>
 
 namespace anasa 
 {
     using Clock = std::chrono::steady_clock;
-    AudioSimulator::AudioSimulator(AudioSettings settings, SharedState& sharedState, SpscQueue<AudioBlock>& readyAudioQueue)
+    AudioSimulator::AudioSimulator(AudioSettings settings, const std::atomic<bool>& engineStop, IAudioBlockProcessor& processor)
         : _settings(settings),
-          _sharedState(sharedState),
-          _readyAudioQueue(readyAudioQueue),
-          _stopRequested(false),
-          _started(false),
-          _callbacks(0),
-          _underruns(0),
-          _callbackMaxInUs(0),
-          _checksum(0.0)
+          _engineStop(engineStop),
+          _processor(processor)
     {
-        assert(_settings.sampleRate > 0);
-        assert(_settings.audioBlockFrames > 0);
-        assert(_settings.audioBlockFrames <= MAX_AUDIO_BLOCK_FRAMES);
+        if (_settings.sampleRate <= 0)
+            throw std::invalid_argument("sampleRate must be greater than zero");
+
+        if (_settings.audioBlockFrames <= 0 || _settings.audioBlockFrames > MAX_AUDIO_BLOCK_FRAMES)
+            throw std::invalid_argument("Invalid simulated callback size");
+
+        if (_settings.channelCount <= 0)
+            throw std::invalid_argument("channelCount must be greater than zero");
+
+        if (_settings.audioBlockFrames != _processor.blockFrames())
+            throw std::invalid_argument("Simulator and processor block sizes must match");
+        
+        // Allocate output storage before the audio thread starts.
+        _output.resize(static_cast<std::size_t>(_settings.channelCount));
+        _outputChannels.resize(static_cast<std::size_t>(_settings.channelCount));
+
+        for (int channel = 0; channel < _settings.channelCount; ++channel)
+        {
+            _output[channel].resize(static_cast<std::size_t>(_settings.audioBlockFrames));
+            _outputChannels[channel] = _output[channel].data();
+        }
     }
 
     AudioSimulator::~AudioSimulator()
@@ -36,9 +48,9 @@ namespace anasa
 
         _stopRequested.store(false, std::memory_order_release);
 
-        _started = true;
-
         _audioThread = std::thread(&AudioSimulator::periodicAudioDeviceClock, this);
+
+        _started = true;
     }
 
     void AudioSimulator::stop()
@@ -86,7 +98,7 @@ namespace anasa
         Clock::time_point nextCallbackTime = Clock::now() + period;
         
         // Audio thread continues until another thread requests shutdown
-        while (!_stopRequested.load(std::memory_order_acquire) && !_sharedState.stop.load(std::memory_order_acquire)) 
+        while (!_stopRequested.load(std::memory_order_acquire) && !_engineStop.load(std::memory_order_acquire)) 
         {
             // The simulated audio thread has no block to consume yet, so it sleeps.
             // At nextCallbackTime, another audio block becomes due for consumption.
@@ -94,7 +106,7 @@ namespace anasa
 
             // Shutdown may be requested while the audio thread is sleeping. 
             // Without this check, the thread would wake and execute one additional callback after stop() had been requested.
-            if (_stopRequested.load(std::memory_order_acquire) || _sharedState.stop.load(std::memory_order_acquire))
+            if (_stopRequested.load(std::memory_order_acquire) || _engineStop.load(std::memory_order_acquire))
                 break;
 
             // at this point the the operating system actually woke the thread
@@ -121,90 +133,27 @@ namespace anasa
             // catch-up missed callback periods
             } while(nextCallbackTime <= wakeTime && 
                     !_stopRequested.load(std::memory_order_acquire) &&
-                    !_sharedState.stop.load(std::memory_order_acquire));
+                    !_engineStop.load(std::memory_order_acquire));
         }
     }
 
-    void AudioSimulator::audioCallback() 
+    void AudioSimulator::audioCallback()
     {
-        // Read the current stream generation
-        const int globalGeneration = _sharedState.generation.load(std::memory_order_acquire);
+        AudioOutputBuffer output{_outputChannels, _settings.audioBlockFrames};
+        const AudioProcessResult result = _processor.processBlock(output);
 
-        // A seek or live edit starts a new published audio stream
-        if (_audioState.generation != globalGeneration)
-        {
-            _audioState.generation = globalGeneration;
-            _audioState.expectedBlockStartFrame = alignFrameToAudioBlock(_sharedState.targetFrame.load(std::memory_order_relaxed),
-                                                                         _settings.audioBlockFrames);
-            // Publish the reset cursor before acknowledging its generation.
-            _sharedState.nextUnconsumedFrame.store(_audioState.expectedBlockStartFrame, std::memory_order_relaxed);
-            _sharedState.audioCursorGeneration.store(globalGeneration, std::memory_order_release);
-        }
-
-        const AudioBlock* head = nullptr;
-        // Remove outdated blocks without locks. Work is bounded by queue capacity.
-        for (std::size_t i = 0; i < _readyAudioQueue.capacity(); ++i) 
-        {
-            // the producer may use the pointer returned by front() only until it calls pop()
-            head = _readyAudioQueue.front();
-
-            if (head == nullptr)
-                break;
-            
-            const bool outdatedGeneration = head->generation < globalGeneration;
-            const bool oldFrame = head->generation == globalGeneration && head->firstFrame < _audioState.expectedBlockStartFrame;
-            const bool headNotOutdated = !outdatedGeneration && !oldFrame;
-            
-            if (headNotOutdated)
-                break;
-
-            _readyAudioQueue.pop();
-            // pop() makes the former front slot available to the producer
-            // the object remains constructed but the producer can now overwrite it
-            
-            // do not access the previous head pointer 
-            head = nullptr;
-        }
-        
-        // If playback is paused or the engine is rebuffering, the callback returns
-        if (!_sharedState.playing.load(std::memory_order_acquire))
+        if (!result.playing)
             return;
 
         ++_callbacks;
 
-        // checks whether the exact required block is at the queue head
-        const bool isExactBlock =
-            head!=nullptr &&
-            head->generation == globalGeneration &&
-            head->firstFrame == _audioState.expectedBlockStartFrame &&
-            head->frameCount == _settings.audioBlockFrames;
-            
-        if (!isExactBlock) 
-        {
-            // No correct block was ready for this callback period.
-            // The defined failure policy is one -conceptual- block of silence.
+        if (result.underrun)
             ++_underruns;
-        }
-        else
+
+        for (const std::vector<float>& channel : _output)
         {
-            // IMPORTANT:
-            // Use the queue-owned AudioBlock BEFORE pop().
-            for (int i = 0; i < head->frameCount; ++i)
-            {
-                const float sample = head->samples[i];
-
+            for (const float sample : channel)
                 _checksum += static_cast<double>(sample) * sample;
-            }
-
-            // We are completely finished with head.
-            // pop() destroys the AudioBlock and allows the producer to reuse this queue slot.
-            _readyAudioQueue.pop();
-
         }
-        
-        // Advance the audio timeline
-        _audioState.expectedBlockStartFrame += _settings.audioBlockFrames;
-        // Publish progress to the scheduler
-        _sharedState.nextUnconsumedFrame.store(_audioState.expectedBlockStartFrame, std::memory_order_release);
     }
 } // namespace anasa

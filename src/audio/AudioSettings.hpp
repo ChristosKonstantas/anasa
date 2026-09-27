@@ -6,8 +6,8 @@ namespace anasa
     struct AudioSettings
     {
         int sampleRate       = 48000; // Sample frames per second.
-        int audioBlockFrames = 128;   // Sample frames per callback period. Each frame can contain N-channel data. For this project N = 1.
-        int channelCount     = 1;
+        int audioBlockFrames = 128; // Internal mono block size and the simulator callback size for now.
+        int channelCount     = 1; // Output channels: rendered source content is currently mono.
     };
     
 } // namespace anasa

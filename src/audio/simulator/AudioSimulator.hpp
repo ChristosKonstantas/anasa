@@ -1,46 +1,55 @@
 #ifndef AUDIO_SIMULATOR_HPP
 #define AUDIO_SIMULATOR_HPP
 
+#include <vector>
 #include <atomic>
 #include <thread>
 
-#include "utils/queues/SpscQueue.hpp"
+#include "audio/AudioConstants.hpp"
 #include "audio/AudioSettings.hpp"
-#include "audio/AudioTypes.hpp"
-#include "playback/PlaybackState.hpp"
-#include "playback/PlaybackTimeline.hpp"
+#include "audio/IAudioBlockProcessor.hpp"
 
 namespace anasa
 {
     class AudioSimulator
     {
     public:
-        AudioSimulator(AudioSettings settings, SharedState& sharedState, SpscQueue<AudioBlock>& readyAudioQueue);
+        // Borrowed dependencies must outlive the simulator and its worker thread.
+        AudioSimulator(AudioSettings settings, const std::atomic<bool>& engineStop, IAudioBlockProcessor& processor);
         ~AudioSimulator();
 
+        AudioSimulator(const AudioSimulator&) = delete;
+        AudioSimulator& operator=(const AudioSimulator&) = delete;
+        AudioSimulator(AudioSimulator&&) = delete;
+        AudioSimulator& operator=(AudioSimulator&&) = delete;
+
+        // Called serially by the owner, outside the audio thread.
         void                     start();
         void                     stop();
+
+        // Read metrics only while stopped (they accumulate across restarts).
         long long                getCallbacksCount() const;
         long long                getUnderrunsCount() const;
         long long                getCallbackMaxInUs() const;
         double                   getChecksum() const;
-        
-    private:               
+
+    private:
         void                     periodicAudioDeviceClock();
         void                     audioCallback();
-        
-        AudioSettings            _settings;
-        std::thread              _audioThread;
-        std::atomic<bool>        _stopRequested;
-        bool                     _started;
-        long long                _callbacks;
-        long long                _underruns;
-        long long                _callbackMaxInUs;
-        double                   _checksum;
-        AudioState               _audioState;
-        SharedState&             _sharedState;
-        SpscQueue<AudioBlock>&   _readyAudioQueue;
+
+        AudioSettings                             _settings;
+        const std::atomic<bool>&                  _engineStop;
+        IAudioBlockProcessor&                     _processor;
+        std::vector<std::vector<float>>           _output;
+        std::vector<float*>                       _outputChannels;
+        std::thread                               _audioThread;
+        std::atomic<bool>                         _stopRequested{false};
+        bool                                      _started = false;
+        long long                                 _callbacks = 0;
+        long long                                 _underruns = 0;
+        long long                                 _callbackMaxInUs = 0;
+        double                                    _checksum = 0.0;
     };
-} // namespace anasa
+}
 
 #endif // AUDIO_SIMULATOR_HPP

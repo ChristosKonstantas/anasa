@@ -95,13 +95,13 @@ flowchart TD
     class Workers threadPool;
 ```
 
-The diagram shows how commands, rendering work, and audio move between runtime threads. Scheduler coordinates the pipeline. Executor workers render tiles concurrently. AudioSimulator consumes published audio independently. Thicker borders identify threads. The heavier border identifies the Executor worker pool.
+The diagram shows how commands, rendering work, and audio move between runtime threads. Scheduler coordinates the pipeline. Executor workers render tiles concurrently. AudioSimulator drives AudioBlockProcessor to consume published audio independently. Thicker borders identify threads. The heavier border identifies the Executor worker pool.
 
 - **Command handling:** The control thread posts commands through `_commandQueue`. Scheduler processes them to update playback, viewport, and content state.
 - **Work selection:** Scheduler classifies chunks as urgent, visible, or background and places their tiles in `_pendingTiles`. It refreshes classifications when playback or viewport changes require it. In Priority mode, low/high water thresholds control background dispatch while playback is requested.
 - **Parallel rendering:** Selected tiles enter the bounded `_renderTasksQueue`. Workers take tasks and render separate regions of a shared `RenderJob::samples` buffer. Once all tile tasks have been accounted for, the final task places the job in `_completedJobsQueue`, even if rendering was cancelled. Jobs abandoned during shutdown may never produce a completion.
 - **Completion and publication:** `collectFinishedJobs()` checks job identity, cancellation, and version before copying accepted samples into `_cache`. `feedAudioQueue()` copies cached samples into `_readyAudioQueue` as generation-tagged blocks in timeline order.
-- **Audio consumption:** AudioSimulator consumes blocks matching its current generation and expected position, discards outdated blocks, and reports playback progress through `_sharedState`. During active playback, a missing required block records an underrun and advances the simulated cursor through conceptual silence.
+- **Audio consumption:** AudioBlockProcessor consumes blocks matching its current generation and expected position, discards outdated blocks, and reports playback progress through _sharedState. During active playback, a missing required block produces silence, reports an underrun, and advances the playback cursor.
 - **Transport and invalidation:** Shared atomics communicate playback state, seek targets, generations, and cursor acknowledgements. Edits bump affected chunk versions so Renderer can abandon obsolete work and Scheduler can reject obsolete results.
 
 Rendering may finish out of order, but audio publication remains ordered. Chunk versions identify valid content. Playback generations distinguish audio belonging to different playback sequences.

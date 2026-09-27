@@ -159,6 +159,19 @@ namespace anasa::functions
         return tile;
     }
 
+    inline bool pushTestAudioBlock(SpscQueue<AudioBlock>& queue, int generation, int firstFrame, int frameCount, float sample = 0.5f)
+    {
+        return queue.pushWith([&](AudioBlock& block)
+        {
+            block.generation = generation;
+            block.firstFrame = firstFrame;
+            block.frameCount = frameCount;
+
+            for (int frame = 0; frame < frameCount; ++frame)
+                block.samples[frame] = sample;
+        });
+    }
+
 } // namespace anasa::functions
 
 #endif // FUNCTIONS_HPP

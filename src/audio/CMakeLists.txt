@@ -1,11 +1,28 @@
 anasa_add_module(
-    audio-pipeline
+    audio-contracts
+    HEADER_ONLY
     SOURCES
-        simulator/AudioSimulator.hpp
-        simulator/AudioSimulator.cpp
         AudioConstants.hpp
         AudioSettings.hpp
         AudioTypes.hpp
+        IAudioBlockProcessor.hpp
+        AudioOutputBuffer.hpp
 )
 
-target_link_libraries(audio-pipeline PUBLIC queues playback)
+anasa_add_module(
+    audio-processing
+    SOURCES
+        AudioBlockProcessor.hpp
+        AudioBlockProcessor.cpp
+)
+
+target_link_libraries(audio-processing PUBLIC audio-contracts queues playback)
+
+anasa_add_module(
+    audio-simulator
+    SOURCES
+        simulator/AudioSimulator.hpp
+        simulator/AudioSimulator.cpp
+)
+
+target_link_libraries(audio-simulator PUBLIC audio-contracts)

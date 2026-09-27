@@ -5,15 +5,15 @@
 
 namespace anasa
 {
-    /* -----------------------------------------------------------------*/
-    /*                Small cross-thread playback state.                */
-    /* -----------------------------------------------------------------*/
-    /* Scheduler writes transport and stream-reset information.         */
-    /* AudioSimulator reads it and publishes playback progress.         */ 
-    /*                                                                  */ 
-    /* This contains only atomics because Scheduler and AudioSimulator  */
-    /* access these values concurrently without a mutex.                */
-    /*------------------------------------------------------------------*/
+    /* ---------------------------------------------------------------------*/
+    /*                Small cross-thread playback state.                    */
+    /* ---------------------------------------------------------------------*/
+    /* Scheduler writes transport and stream-reset information.             */
+    /* AudioBlockProcessor reads it and publishes playback progress.        */ 
+    /*                                                                      */ 
+    /* This contains only atomics because Scheduler and AudioBlockProcessor */
+    /* access these values concurrently without a mutex.                    */
+    /*----------------------------------------------------------------------*/
     struct SharedState
     {
         // Global engine-shutdown request. If true, engine threads must exit.
@@ -38,12 +38,12 @@ namespace anasa
         std::atomic<int> targetFrame{0};
 
         /* Consumer cursor: first timeline frame not yet consumed by the audio callback. */
-        // AudioSimulator is the only writer. After consuming or missing an n-frame block,
+        // AudioBlockProcessor is the only writer. After consuming or missing an n-frame block,
         // it advances this value by n.
         std::atomic<int> nextUnconsumedFrame{0};
 
         /* Identifies the generation to which nextUnconsumedFrame belongs. */
-        // AudioSimulator publishes nextUnconsumedFrame first, then this tag with release ordering.
+        // AudioBlockProcessor publishes nextUnconsumedFrame first, then this tag with release ordering.
         // The Scheduler may use the cursor only when this equals generation otherwise the
         // audio callback has not acknowledged the latest Seek or Edit and targetFrame is authoritative.
         std::atomic<int> audioCursorGeneration{1};
