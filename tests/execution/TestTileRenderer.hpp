@@ -1,8 +1,11 @@
 #ifndef TEST_TILE_RENDERER_HPP
 #define TEST_TILE_RENDERER_HPP    
 
-#include "execution/Executor.hpp"
+#include <array>
+#include <atomic>
+
 #include "render/ITileRenderer.hpp"
+#include "render/RenderConstants.hpp"
 
 namespace anasa
 {

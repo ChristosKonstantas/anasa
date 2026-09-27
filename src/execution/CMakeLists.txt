@@ -13,8 +13,11 @@ anasa_add_module(
     SOURCES
         ExecutorSettings.hpp
         ExecutorConstants.hpp
+        RenderTaskProcessor.cpp
+        RenderTaskProcessor.hpp
         Executor.cpp
         Executor.hpp
+        
 )
 
 target_link_libraries(executor PUBLIC executor-contracts)

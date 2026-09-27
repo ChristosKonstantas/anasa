@@ -12,6 +12,7 @@ if(BUILD_TESTS)
         render/SyntheticRenderKernelTests.cpp
         render/RenderCancellationTests.cpp
         execution/TestTileRenderer.cpp
+        execution/RenderTaskProcessorTests.cpp
         execution/ExecutorContractTests.cpp
         execution/ExecutorTests.cpp
         scheduler/SchedulingPolicyTests.cpp

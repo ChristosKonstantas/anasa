@@ -12,6 +12,7 @@
 #include "execution/IRenderExecutor.hpp"
 #include "execution/ExecutorSettings.hpp"
 #include "execution/ExecutorTypes.hpp"
+#include "execution/RenderTaskProcessor.hpp"
 #include "render/ITileRenderer.hpp"
 
 namespace anasa
@@ -49,7 +50,7 @@ namespace anasa
         void                                   workerLoop(); // Waits for work, removes one FIFO task, renders outside the queue mutex and exits when shutdown is requested.
         
         ExecutorSettings                       _settings;
-        const ITileRenderer&                   _renderer;
+        RenderTaskProcessor                    _taskProcessor;
         std::vector<std::thread>               _workers;
 
         std::queue<RenderTask>                 _renderTasksQueue; // 1 Scheduler (producer) / Many workers (consumers) -> SPMC

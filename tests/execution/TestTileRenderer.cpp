@@ -1,3 +1,7 @@
+#include <cstddef>
+#include <stdexcept>
+
+#include "render/RenderTypes.hpp"
 #include "TestTileRenderer.hpp"
 
 namespace anasa
@@ -13,8 +17,11 @@ namespace anasa
 
         calls[tileIndex].fetch_add(1, std::memory_order_relaxed);
 
-        if (stopRequested.load(std::memory_order_acquire) || job.cancelled.load(std::memory_order_relaxed) || 
-                               job.version != 1 || _outcome == RenderOutcome::Cancel)
+        // The caller must turn a false result into job cancellation.
+        if (_outcome == RenderOutcome::Cancel)
+            return false;
+
+        if (stopRequested.load(std::memory_order_acquire) || job.cancelled.load(std::memory_order_relaxed) || job.version != 1)
         {
             job.cancelled.store(true, std::memory_order_relaxed);
             return false;
@@ -23,9 +30,9 @@ namespace anasa
         if (_outcome == RenderOutcome::Throw)
             throw std::runtime_error("test rendering failure");
 
-        size_t offset = tileIndex * TILE_FRAMES;
+        std::size_t offset = tileIndex * TILE_FRAMES;
 
-        for (size_t i = 0; i < TILE_FRAMES; i++)
+        for (std::size_t i = 0; i < TILE_FRAMES; i++)
             job.samples[offset + i] = sampleForTile(tileIndex);
 
         return true;
