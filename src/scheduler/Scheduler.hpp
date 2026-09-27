@@ -19,6 +19,7 @@
 #include "scheduler/SchedulerTypes.hpp"
 #include "scheduler/policies/SchedulingPolicyCompare.hpp"
 #include "utils/queues/SpscQueue.hpp"
+#include "playback/PlaybackProtocol.hpp"
 
 namespace anasa
 {
@@ -68,7 +69,6 @@ namespace anasa
         
                             /* Helpers */
         bool                                         shutdownRequested() const;
-        int                                          currentPlaybackFrame() const;
         void                                         beginAudioGeneration(int targetFrame, bool suspendPlayback);
         void                                         invalidateVersions(int firstFrame, int lastFrame);
         bool                                         cacheIsCurrent(int chunk) const;
@@ -83,6 +83,7 @@ namespace anasa
         const int                                    _chunkCount;
              
         SharedState&                                 _sharedState;
+        PlaybackProtocol                             _playbackProtocol;
         VersionTable&                                _versionTable;
         IRenderExecutor&                             _executor;
         SpscQueue<AudioBlock>&                       _readyAudioQueue;

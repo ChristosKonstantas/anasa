@@ -7,6 +7,7 @@ if(BUILD_TESTS)
         utils/queues/SpscQueueTests.cpp
         audio/AudioSimulatorTests.cpp
         audio/AudioBlockProcessorTests.cpp
+        playback/PlaybackProtocolTests.cpp
         render/TestVersionReader.cpp
         render/TestRenderKernel.cpp
         render/RenderTests.cpp

@@ -1,12 +1,16 @@
-#include <catch2/catch_test_macros.hpp>
-#include <catch2/generators/catch_generators.hpp>
 #include <vector>
-#include "audio/AudioBlockProcessor.hpp"
-#include "functions/Functions.hpp"
-
 #include <array>
 #include <span>
 #include <stdexcept>
+
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
+
+#include "audio/AudioBlockProcessor.hpp"
+#include "playback/PlaybackProtocol.hpp"
+
+#include "functions/Functions.hpp"
+
 
 namespace anasa
 {
@@ -128,6 +132,7 @@ namespace anasa
     TEST_CASE("AudioBlockProcessor: generation reset acknowledges the target while paused")
     {
         SharedState state;
+        PlaybackProtocol protocol(16, state);
         SpscQueue<AudioBlock> queue(4);
         AudioBlockProcessor processor(4, state, queue);
         std::array<float, 4> output{};
@@ -137,9 +142,9 @@ namespace anasa
         REQUIRE(functions::pushTestAudioBlock(queue, 1, 0, 4));
         REQUIRE_FALSE(processor.processBlock({channels, 4}).underrun);
 
-        state.playing.store(false, std::memory_order_release);
-        state.targetFrame.store(8, std::memory_order_relaxed);
-        state.generation.store(2, std::memory_order_release);
+        protocol.beginGeneration(8, true);
+        REQUIRE(state.audioCursorGeneration.load() == 1);
+        REQUIRE(protocol.currentFrame() == 8);
         REQUIRE(functions::pushTestAudioBlock(queue, 1, 4, 4));
         REQUIRE(functions::pushTestAudioBlock(queue, 2, 4, 4));
         REQUIRE(functions::pushTestAudioBlock(queue, 2, 8, 4, 0.75f));
@@ -147,6 +152,7 @@ namespace anasa
         REQUIRE_FALSE(processor.processBlock({channels, 4}).playing);
         REQUIRE(state.audioCursorGeneration.load() == 2);
         REQUIRE(state.nextUnconsumedFrame.load() == 8);
+        REQUIRE(protocol.currentFrame() == 8);
         REQUIRE(queue.front() != nullptr);
         REQUIRE(queue.front()->generation == 2);
         REQUIRE(queue.front()->firstFrame == 8);
@@ -157,11 +163,13 @@ namespace anasa
         state.playing.store(true, std::memory_order_release);
         REQUIRE_FALSE(processor.processBlock({channels, 4}).underrun);
         REQUIRE(state.nextUnconsumedFrame.load() == 12);
+        REQUIRE(protocol.currentFrame() == 12);
         REQUIRE(queue.isEmpty());
 
         for (const float sample : output)
             REQUIRE(sample == 0.75f);
     }
+    
     TEST_CASE("AudioBlockProcessor: copies mono to every output and advances once")
     {
         const int channelCount = GENERATE(1, 2, 6, 16);

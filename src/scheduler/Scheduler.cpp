@@ -25,6 +25,7 @@ namespace anasa
           _totalFrames(totalFrames),
           _chunkCount(versionTable.count()),
           _sharedState(sharedState),
+          _playbackProtocol(totalFrames, sharedState),
           _versionTable(versionTable),
           _executor(executor),
           _readyAudioQueue(readyAudioQueue),
@@ -60,9 +61,6 @@ namespace anasa
 
         if (_contextFrames < 0)
             throw std::invalid_argument("contextFrames must not be negative");
-
-        if (_totalFrames <= 0)
-            throw std::invalid_argument("totalFrames must be greater than zero");
 
         if (_totalFrames % _audioBlockFrames != 0)
             throw std::invalid_argument("totalFrames must be divisible by audioBlockFrames - current engine does not support a partial final audio block");
@@ -138,7 +136,7 @@ namespace anasa
         _backgroundAllowed = true;
         _pendingClassificationsDirty = true;
         _lastClassifiedPlayheadChunk = -1;
-        _nextFrameToPublish = currentPlaybackFrame();
+        _nextFrameToPublish = _playbackProtocol.currentFrame();
 
         assert(_nextFrameToPublish % _audioBlockFrames == 0 || _nextFrameToPublish == _totalFrames);
 
@@ -302,7 +300,7 @@ namespace anasa
             {
                 invalidateVersions(command.firstFrame, command.lastFrame);
 
-                beginAudioGeneration(currentPlaybackFrame(), _playRequested && _settings.rebufferOnEdit);
+                beginAudioGeneration(_playbackProtocol.currentFrame(), _playRequested && _settings.rebufferOnEdit);
                 break;
             }
 
@@ -350,7 +348,7 @@ namespace anasa
 
     void Scheduler::feedAudioQueue()
     {
-        const int nextUnconsumedFrame = currentPlaybackFrame();
+        const int nextUnconsumedFrame = _playbackProtocol.currentFrame();
 
         if (nextUnconsumedFrame >= _totalFrames)
         {
@@ -430,7 +428,7 @@ namespace anasa
 
     void Scheduler::scheduleRenderJobs()
     {
-        const int playheadFrame = currentPlaybackFrame();
+        const int playheadFrame = _playbackProtocol.currentFrame();
 
         const int playheadChunk = playheadFrame < _totalFrames ? frameToChunk(playheadFrame) : _chunkCount;
 
@@ -633,29 +631,8 @@ namespace anasa
     {
         assert(targetFrame % _audioBlockFrames == 0 || targetFrame == _totalFrames);
 
-        if (suspendPlayback)
-            _sharedState.playing.store(false, std::memory_order_release);
-
-        // targetFrame must be published before generation.
-        _sharedState.targetFrame.store(targetFrame, std::memory_order_relaxed);
-
-        _sharedState.generation.fetch_add(1, std::memory_order_acq_rel);
-
+        _playbackProtocol.beginGeneration(targetFrame, suspendPlayback);
         _nextFrameToPublish = targetFrame;
-    }
-
-    int Scheduler::currentPlaybackFrame() const
-    {
-        // Before audio thread acknowledges seek -> Scheduler follows targetFrame
-        // After audio thread acknowledges seek  -> Scheduler follows nextUnconsumedFrame
-        const int generation = _sharedState.generation.load(std::memory_order_acquire);
-        const int cursorGeneration = _sharedState.audioCursorGeneration.load(std::memory_order_acquire);
-
-        // The audio cursor still belongs to the previous stream.
-        if (cursorGeneration != generation)
-            return clampTimelineBoundary(_sharedState.targetFrame.load(std::memory_order_acquire), _totalFrames);
-
-        return clampTimelineBoundary(_sharedState.nextUnconsumedFrame.load(std::memory_order_acquire), _totalFrames);
     }
 
     void Scheduler::invalidateVersions(int firstFrame, int lastFrame)
@@ -685,7 +662,7 @@ namespace anasa
 
     int Scheduler::readyLeadBlocks() const
     {
-        const int nextUnconsumedFrame = currentPlaybackFrame();
+        const int nextUnconsumedFrame = _playbackProtocol.currentFrame();
 
         const int readyFrames = std::max(0, _nextFrameToPublish - nextUnconsumedFrame);
 
