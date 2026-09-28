@@ -65,8 +65,8 @@ namespace anasa
         SyntheticRenderKernel kernel(audioSettings.sampleRate, renderSettings.workIterations);
         Renderer renderer(kernel, versions);
         Executor executor(ExecutorSettings{}, renderer);
-        Scheduler scheduler(schedulerSettings, audioSettings, renderSettings, 2 * CHUNK_FRAMES, state, versions, executor, queue);
-
+        Scheduler scheduler(schedulerSettings, audioSettings, renderSettings, 2 * CHUNK_FRAMES, state, versions, executor, audioQueue);
+        
         executor.start();
         scheduler.start();
 

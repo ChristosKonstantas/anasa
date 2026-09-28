@@ -32,7 +32,7 @@ namespace anasa
         EngineMetrics metrics() const;
 
     private:
-        int calculateTotalFrames(const EngineSettings &settings);
+        static int calculateTotalFrames(const EngineSettings &settings);
 
         EngineSettings                   _settings;
         int                              _totalFrames;
