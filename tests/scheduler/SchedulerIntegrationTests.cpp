@@ -150,4 +150,16 @@ namespace anasa
         REQUIRE(firstNewBlock.frameCount == schedulerTestRig.audioSettings.audioBlockFrames);
     }
 
+    TEST_CASE("Scheduler: reaching the timeline end disables playback")
+    {
+        SchedulerTestRig schedulerTestRig;
+        schedulerTestRig.start();
+        REQUIRE(schedulerTestRig.scheduler.post({CommandType::Play, 0, 0}));
+        REQUIRE(functions::waitUntil([&]{return schedulerTestRig.sharedState.playing.load(std::memory_order_acquire);}));
+
+        // Model the consumer reaching the end in the current generation.
+        schedulerTestRig.sharedState.nextUnconsumedFrame.store(SchedulerTestRig::TOTAL_FRAMES, std::memory_order_release);
+        REQUIRE(functions::waitUntil([&]{return !schedulerTestRig.sharedState.playing.load(std::memory_order_acquire);}));
+    }
+
 } // namespace anasa

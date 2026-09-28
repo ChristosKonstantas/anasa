@@ -5,9 +5,6 @@ if(BUILD_TESTS)
         functions/Functions.hpp
         benchmarks/Benchmark.hpp
         utils/queues/SpscQueueTests.cpp
-        audio/AudioSimulatorTests.cpp
-        audio/AudioBlockProcessorTests.cpp
-        playback/PlaybackProtocolTests.cpp
         render/TestVersionReader.cpp
         render/TestRenderKernel.cpp
         render/RenderTests.cpp
@@ -17,6 +14,10 @@ if(BUILD_TESTS)
         execution/RenderTaskProcessorTests.cpp
         execution/ExecutorContractTests.cpp
         execution/ExecutorTests.cpp
+        audio/AudioSimulatorTests.cpp
+        audio/AudioBlockProcessorTests.cpp
+        playback/PlaybackProtocolTests.cpp
+        playback/PlaybackControllerTests.cpp
         scheduler/SchedulingPolicyTests.cpp
         scheduler/SchedulerIntegrationTests.cpp
 

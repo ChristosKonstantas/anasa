@@ -26,6 +26,7 @@ namespace anasa
           _chunkCount(versionTable.count()),
           _sharedState(sharedState),
           _playbackProtocol(totalFrames, sharedState),
+          _playbackController(schedulerSettings.prebufferBlocks, schedulerSettings.rebufferOnEdit, sharedState.playing),
           _versionTable(versionTable),
           _executor(executor),
           _readyAudioQueue(readyAudioQueue),
@@ -36,7 +37,6 @@ namespace anasa
           _activeJobs(_chunkCount),
           _stopRequested(false),
           _started(false),
-          _playRequested(false),
           _backgroundAllowed(true),
           _pendingClassificationsDirty(true),
           _viewportFirstFrame(0),
@@ -64,9 +64,6 @@ namespace anasa
 
         if (_totalFrames % _audioBlockFrames != 0)
             throw std::invalid_argument("totalFrames must be divisible by audioBlockFrames - current engine does not support a partial final audio block");
-
-        if (_settings.prebufferBlocks < 0)
-            throw std::invalid_argument("prebufferBlocks must not be negative");
 
         if (_settings.lowWaterBlocks < 0)
             throw std::invalid_argument("lowWaterBlocks must not be negative");
@@ -132,7 +129,7 @@ namespace anasa
             return;
 
         _stopRequested.store(false, std::memory_order_release);
-        _playRequested = false;
+        _playbackController.resetPlayRequest();
         _backgroundAllowed = true;
         _pendingClassificationsDirty = true;
         _lastClassifiedPlayheadChunk = -1;
@@ -186,7 +183,7 @@ namespace anasa
             }
         }
 
-        _playRequested = false;
+        _playbackController.resetPlayRequest();
         _backgroundAllowed = true;
         _timelineScanCursorInChunks = 0;
         _nextTileSequence = 0;
@@ -256,22 +253,17 @@ namespace anasa
         {
             case CommandType::Play:
             {
-                if (!_playRequested)
+                if (_playbackController.requestPlay())
                     _pendingClassificationsDirty = true;
-                
-                _playRequested = true;
-                
+
                 break;
             }
 
             case CommandType::Pause:
             {
-                if (_playRequested)
+                if (_playbackController.pause())
                     _pendingClassificationsDirty = true;
 
-                _playRequested = false;
-                _sharedState.playing.store(false, std::memory_order_release);
-                
                 break;
             }
 
@@ -300,7 +292,7 @@ namespace anasa
             {
                 invalidateVersions(command.firstFrame, command.lastFrame);
 
-                beginAudioGeneration(_playbackProtocol.currentFrame(), _playRequested && _settings.rebufferOnEdit);
+                beginAudioGeneration(_playbackProtocol.currentFrame(), _playbackController.shouldRebufferOnEdit());
                 break;
             }
 
@@ -353,12 +345,10 @@ namespace anasa
         if (nextUnconsumedFrame >= _totalFrames)
         {
             _nextFrameToPublish = _totalFrames;
-            
-            if (_playRequested)
+
+            if (_playbackController.pause())
                 _pendingClassificationsDirty = true;
 
-            _playRequested = false;
-            _sharedState.playing.store(false, std::memory_order_release);
             return;
         }
 
@@ -398,21 +388,12 @@ namespace anasa
             _nextFrameToPublish += _audioBlockFrames;
         }
 
-        if (!_playRequested ||  _sharedState.playing.load(std::memory_order_acquire))
-            return;
-
-        // below now is executed only if (_playRequested && !_sharedState.playing.load(std::memory_order_acquire))
-        // play is requested but playing has not started ->> prebuffering
-        const bool prebufferReady = readyLeadBlocks() >= _settings.prebufferBlocks;
-        const bool entireRemainderPublished = _nextFrameToPublish >= _totalFrames;
-
-        if (prebufferReady || entireRemainderPublished)
-            _sharedState.playing.store(true, std::memory_order_release); // now callback is allowed to advance
+        _playbackController.startIfReady(readyLeadBlocks(), _nextFrameToPublish >= _totalFrames);
     }
 
     void Scheduler::updateBackgroundAdmission()
     {
-        if (_settings.policyType == SchedulingPolicyType::Fifo || !_playRequested)
+        if (_settings.policyType == SchedulingPolicyType::Fifo || !_playbackController.playRequested())
         {
             _backgroundAllowed = true;
             return;
@@ -443,7 +424,7 @@ namespace anasa
         _lastClassifiedPlayheadChunk = playheadChunk;
 
         // (1) Playback-near chunks (urgent).
-        if (_playRequested && playheadFrame < _totalFrames)
+        if (_playbackController.playRequested() && playheadFrame < _totalFrames)
         {
             const int firstChunk = frameToChunk(playheadFrame);
             const int lastChunk = std::min(firstChunk + _settings.urgentChunks, _chunkCount);
@@ -526,8 +507,8 @@ namespace anasa
         RenderClassification classification;
         classification.distanceInFrames = std::abs(chunkFirstFrame - boundedPlayhead);
 
-        // _playRequested usage instead of SharedState::playing because urgent prebuffering must happen *before* playback is allowed to begin.
-        if (_playRequested && boundedPlayhead < _totalFrames)
+        // Play intent drives urgent preparation before audio consumption is enabled.
+        if (_playbackController.playRequested() && boundedPlayhead < _totalFrames)
         {
             const int firstUrgentChunk = frameToChunk(boundedPlayhead);
             const int lastUrgentChunk = std::min(firstUrgentChunk + _settings.urgentChunks, _chunkCount);
