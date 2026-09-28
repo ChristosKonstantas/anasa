@@ -20,7 +20,8 @@ if(BUILD_TESTS)
         playback/PlaybackControllerTests.cpp
         scheduler/SchedulingPolicyTests.cpp
         scheduler/SchedulerIntegrationTests.cpp
-
+        scheduler/SchedulerBoundaryTests.cpp
+        engine/EngineTests.cpp
     )
 
     add_executable(tests ${TEST_SOURCES})
@@ -45,6 +46,7 @@ if(BUILD_TESTS)
                           renderer
                           executor
                           scheduler
+                          engine
     )
 
     source_group(
