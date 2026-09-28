@@ -10,6 +10,7 @@
 #include <iostream>
 #include <memory>
 #include <chrono>
+#include <cmath>
 
 #include "benchmarks/Benchmark.hpp"
 #include "utils/queues/SpscQueueOld1.hpp"

@@ -71,7 +71,7 @@ flowchart TD
     Shared["SharedState atomics: _sharedState"]
 
     Scheduler -->|"Publish playing, targetFrame, generation"| Shared
-    Shared -->|"Scheduler::currentPlaybackFrame()"| Scheduler
+    Shared -->|"PlaybackProtocol::currentFrame()"| Scheduler
 
     Audio <-->|"Audio thread reads playback state and writes cursor and cursor generation"| Shared
 
