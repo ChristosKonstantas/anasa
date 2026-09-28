@@ -1,3 +1,6 @@
+#include <limits>
+#include <stdexcept>
+
 #include "Engine.hpp"
 
 namespace anasa
@@ -5,8 +8,8 @@ namespace anasa
 
     Engine::Engine(EngineSettings settings)
         :_settings(settings),
-         _totalFrames(_settings.timelineInSeconds * _settings.audio.sampleRate),
-         _chunkCount((_totalFrames + CHUNK_FRAMES - 1) / CHUNK_FRAMES), // (ceil(_totalFrames/CHUNK_FRAMES))
+         _totalFrames(calculateTotalFrames(_settings)),
+         _chunkCount(1 + (_totalFrames - 1) / CHUNK_FRAMES), // (ceil(_totalFrames/CHUNK_FRAMES))
          _versionTable(_chunkCount),
          _sharedState(),
          _readyAudioQueue(READY_AUDIO_QUEUE_SLOTS),
@@ -106,6 +109,20 @@ namespace anasa
             _audioSimulator.getUnderrunsCount(),
             _audioSimulator.getCallbackMaxInUs()
         };
+    }
+
+    int Engine::calculateTotalFrames(const EngineSettings& settings)
+    {
+        if (settings.timelineInSeconds <= 0)
+            throw std::invalid_argument("timelineInSeconds must be greater than zero");
+
+        if (settings.audio.sampleRate <= 0)
+            throw std::invalid_argument("sampleRate must be greater than zero");
+
+        if (settings.timelineInSeconds > std::numeric_limits<int>::max() / settings.audio.sampleRate)
+            throw std::invalid_argument("Timeline frame count exceeds the supported range");
+
+        return settings.timelineInSeconds * settings.audio.sampleRate;
     }
 
 

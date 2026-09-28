@@ -40,7 +40,7 @@ namespace anasa
           _backgroundAllowed(true),
           _pendingClassificationsDirty(true),
           _viewportFirstFrame(0),
-          _viewportLastFrame(std::min(totalFrames, 2 * audioSettings.sampleRate)),
+          _viewportLastFrame(0),
           _lastClassifiedPlayheadChunk(-1),
           _nextFrameToPublish(0),
           _timelineScanCursorInChunks(0),
@@ -94,10 +94,12 @@ namespace anasa
         if (_settings.urgentReservedTiles < TILES_PER_CHUNK)
             throw std::invalid_argument("urgentReservedTiles must hold one complete chunk");
 
-        const int expectedChunkCount = (_totalFrames + CHUNK_FRAMES - 1) / CHUNK_FRAMES;
+        const int expectedChunkCount = 1 + (_totalFrames - 1) / CHUNK_FRAMES;
 
         if (_chunkCount != expectedChunkCount)
             throw std::invalid_argument("VersionTable size does not match timeline chunk count");
+        
+        _viewportLastFrame = audioSettings.sampleRate > _totalFrames / 2 ? _totalFrames : 2 * audioSettings.sampleRate;
     }
 
     Scheduler::~Scheduler()
@@ -358,7 +360,7 @@ namespace anasa
 
         const int generation = _sharedState.generation.load(std::memory_order_acquire);
 
-        while (_nextFrameToPublish + _audioBlockFrames <= _totalFrames)
+        while (_nextFrameToPublish <= _totalFrames - _audioBlockFrames)
         {
             const int chunk = frameToChunk(_nextFrameToPublish);
 
@@ -427,7 +429,7 @@ namespace anasa
         if (_playbackController.playRequested() && playheadFrame < _totalFrames)
         {
             const int firstChunk = frameToChunk(playheadFrame);
-            const int lastChunk = std::min(firstChunk + _settings.urgentChunks, _chunkCount);
+            const int lastChunk = firstChunk + std::min(_settings.urgentChunks, _chunkCount - firstChunk);
 
             for (int chunk = firstChunk; chunk < lastChunk; ++chunk)
                 scheduleChunk(chunk, playheadFrame);
@@ -511,7 +513,7 @@ namespace anasa
         if (_playbackController.playRequested() && boundedPlayhead < _totalFrames)
         {
             const int firstUrgentChunk = frameToChunk(boundedPlayhead);
-            const int lastUrgentChunk = std::min(firstUrgentChunk + _settings.urgentChunks, _chunkCount);
+            const int lastUrgentChunk = firstUrgentChunk + std::min(_settings.urgentChunks, _chunkCount - firstUrgentChunk);
 
             if (chunk >= firstUrgentChunk && chunk < lastUrgentChunk)
             {
@@ -622,8 +624,8 @@ namespace anasa
         lastFrame = clampTimelineFrame(std::max(firstFrame, lastFrame), _totalFrames);
 
         const int haloFirstFrame = std::max(0, firstFrame - _contextFrames);
-        const int haloLastFrame = std::min(_totalFrames - 1, lastFrame + _contextFrames);
-
+        const int haloLastFrame = lastFrame + std::min(_contextFrames, _totalFrames - 1 - lastFrame);
+        
         const int firstChunk = frameToChunk(haloFirstFrame);
         const int lastChunk = frameToChunk(haloLastFrame);
 
@@ -653,8 +655,8 @@ namespace anasa
     bool Scheduler::chunkIntersectsViewport(int chunk) const
     {
         const int chunkFirstFrame = firstFrameOfChunk(chunk);
-        const int chunkLastFrame = std::min(chunkFirstFrame + CHUNK_FRAMES, _totalFrames);
-
+        const int chunkLastFrame = chunkFirstFrame + std::min(CHUNK_FRAMES, _totalFrames - chunkFirstFrame);
+        
         // Both ranges are half-open:
         // chunk:    [chunkFirstFrame, chunkLastFrame)
         // viewport: [_viewportFirstFrame, _viewportLastFrame)

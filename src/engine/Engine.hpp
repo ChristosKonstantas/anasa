@@ -30,8 +30,10 @@ namespace anasa
         bool post(Command command);
         PlaybackSnapshot playbackSnapshot() const;
         EngineMetrics metrics() const;
-        
+
     private:
+        int calculateTotalFrames(const EngineSettings &settings);
+
         EngineSettings                   _settings;
         int                              _totalFrames;
         int                              _chunkCount;

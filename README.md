@@ -63,7 +63,7 @@ flowchart TD
     Admission -.->|"Controls background dispatch"| Pending
     Cache["Scheduler-owned cache: _cache"]
     ReadyQueue["SPSC ready-audio queue: _readyAudioQueue"]
-    Audio["Audio thread: AudioSimulator::audioCallback()"]
+    Audio["Audio thread: AudioBlockProcessor::processBlock()"]
 
     Cache -->|"feedAudioQueue() copies ordered blocks using pushWith()"| ReadyQueue
     ReadyQueue -->|"front(): pop consumed or outdated blocks"| Audio
@@ -71,7 +71,7 @@ flowchart TD
     Shared["SharedState atomics: _sharedState"]
 
     Scheduler -->|"Publish playing, targetFrame, generation"| Shared
-    Shared -->|"PlaybackProtocol::currentFrame()"| Scheduler
+    Shared -->|"Scheduler::currentPlaybackFrame()"| Scheduler
 
     Audio <-->|"Audio thread reads playback state and writes cursor and cursor generation"| Shared
 

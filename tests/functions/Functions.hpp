@@ -121,8 +121,7 @@ namespace anasa::functions
         }, timeout);
     }
     
-    inline bool waitAndPopFirstBlockOfGeneration(SpscQueue<AudioBlock>& queue, int generation, BlockHeader& result, 
-                                            std::chrono::milliseconds timeout = 5000ms)
+    inline bool waitAndPopFirstBlockOfGeneration(SpscQueue<AudioBlock>& queue, int generation, BlockHeader& result, std::chrono::milliseconds timeout = 5000ms)
     {
         const auto deadline = std::chrono::steady_clock::now() + timeout;
 
