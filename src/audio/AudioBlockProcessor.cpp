@@ -96,7 +96,7 @@ namespace anasa
                     continue;
 
                 for (int frame = 0; frame < _blockFrames; ++frame)
-                    channel[frame] = head->samples[frame];
+                    channel[frame] = head->samples[0][frame];
             }
 
             // Copy before releasing the slot to the producer. pop() does not destroy it.

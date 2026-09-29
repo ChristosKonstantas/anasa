@@ -22,7 +22,7 @@ anasa_add_module(
         AudioBlockProcessor.hpp
         AudioBlockProcessor.cpp
 )
-
+target_link_libraries(audio-contracts INTERFACE audio-buffer)
 target_link_libraries(audio-processing PUBLIC audio-contracts queues playback)
 
 anasa_add_module(

@@ -396,7 +396,7 @@ namespace anasa
 
                 // AudioBlock remains mono until the publication/output migration.
                 const auto source = _cache[chunk].samples[0];
-                std::copy_n(source.begin() + chunkOffset, _audioBlockFrames, block.samples.begin());
+                std::copy_n(source.begin() + chunkOffset, _audioBlockFrames, block.samples[0].begin());
             });
 
             if (!pushed)

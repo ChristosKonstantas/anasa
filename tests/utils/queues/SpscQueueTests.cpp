@@ -600,7 +600,7 @@ void fillAudioBlock(anasa::AudioBlock& block, std::size_t index)
     block.frameCount = AudioBlockFrames;
 
     for (int i = 0; i < block.frameCount; ++i)
-        block.samples[i] = 0.1f;
+        block.samples[0][i] = 0.1f;
 }
 
 double consumeAudioBlock(const anasa::AudioBlock& block)
@@ -608,7 +608,7 @@ double consumeAudioBlock(const anasa::AudioBlock& block)
     double checksum = 0.0;
 
     for (int i = 0; i < block.frameCount; ++i)
-        checksum += static_cast<double>(block.samples[i]);
+        checksum += static_cast<double>(block.samples[0][i]);
 
     return checksum;
 }

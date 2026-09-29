@@ -169,7 +169,7 @@ namespace anasa::functions
             block.frameCount = frameCount;
 
             for (int frame = 0; frame < frameCount; ++frame)
-                block.samples[frame] = sample;
+                block.samples[0][frame] = sample;
         });
     }
 

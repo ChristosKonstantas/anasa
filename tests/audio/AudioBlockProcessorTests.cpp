@@ -192,7 +192,7 @@ namespace anasa
             block.frameCount = 4;
 
             for (int frame = 0; frame < 4; ++frame)
-                block.samples[frame] = 0.125f * (frame + 1);
+                block.samples[0][frame] = 0.125f * (frame + 1);
         }));
         state.playing.store(true, std::memory_order_release);
 

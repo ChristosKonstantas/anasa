@@ -1,20 +1,26 @@
 #ifndef AUDIO_TYPES_HPP
 #define AUDIO_TYPES_HPP
 
-#include <array>
-#include <atomic>
-
 #include "audio/AudioConstants.hpp"
+#include "audio/AudioBuffer.hpp"
 
 namespace anasa
 {
     struct AudioBlock
     {
+        AudioBlock()
+            : AudioBlock(1, MAX_AUDIO_BLOCK_FRAMES)
+        {}
+
+        AudioBlock(int channelCount, int frameCapacity)
+            : samples(channelCount, frameCapacity)
+        {}
+
         int generation = 0;
         int firstFrame = 0;
         int frameCount = 0;
 
-        std::array<float, MAX_AUDIO_BLOCK_FRAMES> samples{};
+        AudioBuffer samples;
     };
 
     struct AudioState
