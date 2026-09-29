@@ -1,7 +1,7 @@
 anasa_add_module(
     benchmarks
     HEADER_ONLY
-    FOLDER "tests"
+    FOLDER "benchmarks"
     SOURCES
         Benchmark.hpp
 )

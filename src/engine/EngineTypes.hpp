@@ -1,12 +1,23 @@
 #ifndef ENGINE_TYPES_HPP
 #define ENGINE_TYPES_HPP
 
-#include "engine/EngineSettings.hpp"
-
 namespace anasa
 {
+    struct PlaybackSnapshot
+    {
+        bool playing;
+        int generation;
+        int cursorGeneration;
+        int nextUnconsumedFrame;
+    };
 
+    struct EngineMetrics
+    {
+        long long callbacks;
+        long long underruns;
+        long long maximumCallbackMicroseconds;
+    };
 
-} // namespace anasa
+}// namespace anasa
 
 #endif // ENGINE_TYPES_HPP

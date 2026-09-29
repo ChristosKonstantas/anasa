@@ -1,6 +1,5 @@
 anasa_add_module(   
     engine
-    FOLDER "engine"
     SOURCES
         EngineSettings.hpp
         EngineTypes.hpp
@@ -8,4 +7,4 @@ anasa_add_module(
         Engine.hpp
 )
 
-target_link_libraries(engine PUBLIC audio-pipeline queues playback)
+target_link_libraries(engine PUBLIC audio-processing audio-simulator queues playback renderer executor scheduler)

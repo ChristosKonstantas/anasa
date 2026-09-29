@@ -53,6 +53,14 @@ class SpscQueue : private Alloc // Empty Base Optimization
             }
         }
 
+        SpscQueue(const SpscQueue&) = delete;
+
+        SpscQueue& operator=(const SpscQueue&) = delete;
+        
+        SpscQueue(SpscQueue&&) = delete;
+        
+        SpscQueue& operator=(SpscQueue&&) = delete;
+        
         ~SpscQueue()
         {
             for (std::size_t i = 0; i < _capacity; ++i)
@@ -140,6 +148,12 @@ class SpscQueue : private Alloc // Empty Base Optimization
             return isFull(write, read);
         }
 
+        void reset()
+        {
+            _read.store(0, std::memory_order_relaxed);
+            _write.store(0, std::memory_order_relaxed);
+        }
+        
     private:
 
         bool isFull(std::size_t write, std::size_t read) const

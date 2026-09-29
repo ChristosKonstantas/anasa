@@ -1,13 +1,21 @@
 #ifndef ENGINE_HPP
 #define ENGINE_HPP
 
-#include <memory>
-
-#include "engine/EngineTypes.hpp"
 #include "engine/EngineSettings.hpp"
+#include "engine/EngineTypes.hpp"
 #include "utils/queues/SpscQueue.hpp"
-#include "audio-pipeline/AudioSimulator.hpp"
+#include "audio/AudioConstants.hpp"
+#include "audio/AudioTypes.hpp"
+#include "audio/simulator/AudioSimulator.hpp"
+#include "audio/AudioBlockProcessor.hpp"
 #include "playback/PlaybackState.hpp"
+#include "render/VersionTable.hpp"
+#include "render/RenderConstants.hpp"
+#include "render/Renderer.hpp"
+#include "execution/Executor.hpp"
+#include "scheduler/Scheduler.hpp"
+#include "scheduler/SchedulerTypes.hpp"
+#include "render/kernels/SyntheticRenderKernel.hpp"
 
 namespace anasa
 {
@@ -19,13 +27,28 @@ namespace anasa
 
         void start();
         void stop();
+        bool post(Command command);
+        PlaybackSnapshot playbackSnapshot() const;
+        EngineMetrics metrics() const;
 
     private:
+        static int calculateTotalFrames(const EngineSettings &settings);
 
-        // (1) Simulated real-time audio thread.
+        EngineSettings                   _settings;
+        int                              _totalFrames;
+        int                              _chunkCount;
+
+        VersionTable                     _versionTable; 
         SharedState                      _sharedState;
         SpscQueue<AudioBlock>            _readyAudioQueue;
+        
+        SyntheticRenderKernel            _renderKernel;
+        Renderer                         _renderer;
+        Executor                         _executor;
+        Scheduler                        _scheduler;
+        AudioBlockProcessor              _audioBlockProcessor;
         AudioSimulator                   _audioSimulator;
+
         bool                             _started;
     };
 }

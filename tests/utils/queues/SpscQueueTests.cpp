@@ -10,11 +10,12 @@
 #include <iostream>
 #include <memory>
 #include <chrono>
+#include <cmath>
 
 #include "benchmarks/Benchmark.hpp"
 #include "utils/queues/SpscQueueOld1.hpp"
 #include "utils/queues/SpscQueueOld2.hpp"
-#include "audio-pipeline/AudioTypes.hpp"
+#include "audio/AudioTypes.hpp"
 
 #endif // enable_benchmarks
 
@@ -472,7 +473,21 @@ TEST_CASE("SpscQueue AudioBlock implementation comparison")
 
         return checksum;
     });
-
+    REQUIRE(std::isfinite(current.operationsPerSecond));
+    REQUIRE(std::isfinite(current.nanosecondsPerOperation));
+    REQUIRE(current.operationsPerSecond > 0.0);
+    REQUIRE(current.nanosecondsPerOperation > 0.0);
+    REQUIRE(current.checksum > 0.0);
+    REQUIRE(std::isfinite(old1.operationsPerSecond));
+    REQUIRE(std::isfinite(old1.nanosecondsPerOperation));
+    REQUIRE(old1.operationsPerSecond > 0.0);
+    REQUIRE(old1.nanosecondsPerOperation > 0.0);
+    REQUIRE(old1.checksum > 0.0);
+    REQUIRE(std::isfinite(old2.operationsPerSecond));
+    REQUIRE(std::isfinite(old2.nanosecondsPerOperation));
+    REQUIRE(old2.operationsPerSecond > 0.0);
+    REQUIRE(old2.nanosecondsPerOperation > 0.0);
+    REQUIRE(old2.checksum > 0.0);
     std::cout
         << "\n*--------------------------------* \n"
         << "|SpscQueue<AudioBlock> comparison| \n"
@@ -480,26 +495,26 @@ TEST_CASE("SpscQueue AudioBlock implementation comparison")
         << "\n---------------------------------- \n"
         << "\n(1)\n"
         << "\nCurrent - zero copy + pre-construction\n"
-        << "Transfers: " << current.transfersPerSecond / 1000000.0f << " M transfers/sec\n"
-        << "Time:      " << current.nanosecondsPerTransfer << " ns/transfer\n"
+        << "Transfers: " << current.operationsPerSecond / 1000000.0f << " M transfers/sec\n"
+        << "Time:      " << current.nanosecondsPerOperation << " ns/transfer\n"
         << "\n---------------------------------- \n"
         << "\n(2)\n"
         << "\nOld1 - allocator + copies + pre-construction \n"
-        << "Transfers: " << old1.transfersPerSecond / 1000000.0f << " M transfers/sec\n"
-        << "Time:      " << old1.nanosecondsPerTransfer << " ns/transfer\n"
+        << "Transfers: " << old1.operationsPerSecond / 1000000.0f << " M transfers/sec\n"
+        << "Time:      " << old1.nanosecondsPerOperation << " ns/transfer\n"
         << "\n---------------------------------- \n"
         << "\n(3)\n"
         << "\nOld2 - original std::array + copies\n"
-        << "Transfers: " << old2.transfersPerSecond / 1000000.0f << " M transfers/sec\n"
-        << "Time:      " << old2.nanosecondsPerTransfer << " ns/transfer\n"
+        << "Transfers: " << old2.operationsPerSecond / 1000000.0f << " M transfers/sec\n"
+        << "Time:      " << old2.nanosecondsPerOperation << " ns/transfer\n"
         << "\n---------------------------------- \n"
         << "\nSpeedup current vs Old1: "
-        << old1.nanosecondsPerTransfer / current.nanosecondsPerTransfer << "x\n"
+        << old1.nanosecondsPerOperation / current.nanosecondsPerOperation << "x\n"
         << "Speedup current vs Old2: "
-        << old2.nanosecondsPerTransfer / current.nanosecondsPerTransfer << "x\n"
+        << old2.nanosecondsPerOperation / current.nanosecondsPerOperation << "x\n"
         << "\n";
     REQUIRE(current.checksum == old1.checksum);
     REQUIRE(current.checksum == old2.checksum);
 }
 
-#endif // enable_benchmarks
+#endif //enable_benchmarks

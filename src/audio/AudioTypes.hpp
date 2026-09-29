@@ -4,7 +4,7 @@
 #include <array>
 #include <atomic>
 
-#include "audio-pipeline/AudioConstants.hpp"
+#include "audio/AudioConstants.hpp"
 
 namespace anasa
 {
@@ -22,8 +22,6 @@ namespace anasa
         int generation = 0;
         int expectedBlockStartFrame = 0;
     };
-
-
 } // namespace anasa
 
 #endif // AUDIO_TYPES_HPP

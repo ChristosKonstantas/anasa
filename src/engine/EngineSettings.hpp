@@ -1,14 +1,21 @@
 #ifndef ENGINE_SETTINGS_HPP
 #define ENGINE_SETTINGS_HPP
 
-#include "audio-pipeline/AudioSettings.hpp"
+#include "audio/AudioSettings.hpp"
+#include "render/RenderSettings.hpp"
+#include "execution/ExecutorSettings.hpp"
+#include "scheduler/SchedulerSettings.hpp"
 
 namespace anasa
 {
     struct EngineSettings
     {
         AudioSettings audio;
-        // ....
+        RenderSettings render;
+        ExecutorSettings executor;
+        SchedulerSettings scheduler;
+
+        int timelineInSeconds = 12;
     };
     
 } // namespace anasa

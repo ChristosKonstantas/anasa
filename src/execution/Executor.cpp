@@ -1,0 +1,182 @@
+#include <cassert>
+#include <stdexcept>
+#include <utility>
+
+#include "execution/Executor.hpp"
+#include "render/RenderConstants.hpp"
+
+namespace anasa
+{
+
+    Executor::Executor(const ExecutorSettings& settings, const ITileRenderer& renderer)
+        : _settings(settings),
+          _taskProcessor(renderer),
+          _stopRequested(false),
+          _started(false)
+    {
+        if (_settings.workerCount <= 0)
+            throw std::invalid_argument("workerCount must be greater than zero");
+
+        if (_settings.renderTasksQueueCapacity <= 0)
+            throw std::invalid_argument("queuedTaskCapacity must be greater than zero");
+    }
+
+    Executor::~Executor()
+    {
+        stop();
+    }
+
+    void Executor::start()
+    {
+        {
+            std::lock_guard<std::mutex> lock(_taskMutex);
+
+            if (_started)
+                return;
+
+            _stopRequested.store(false, std::memory_order_release);
+            _started = true;
+        }
+
+        // Starting a new execution session discards completions from an older session.
+        {
+            std::lock_guard<std::mutex> lock(_completedMutex);
+
+            while (!_completedJobsQueue.empty())
+                _completedJobsQueue.pop();
+        }
+
+        try
+        {
+            _workers.reserve(_settings.workerCount);
+
+            for (int worker = 0; worker < _settings.workerCount; ++worker)
+                _workers.emplace_back([this]{workerLoop();});
+        }
+        catch (...)
+        {
+            stop();
+            throw;
+        }
+    }
+
+    void Executor::stop()
+    {
+        {
+            std::lock_guard<std::mutex> lock(_taskMutex);
+
+            if (!_started)
+                return;
+
+            _stopRequested.store(true, std::memory_order_release);
+
+            // Any remaining work should not be executed during shutdown: cancel and remove every task that has not started rendering.
+            while (!_renderTasksQueue.empty())
+            {
+                RenderTask& task = _renderTasksQueue.front();
+
+                if (task.job)
+                    task.job->cancelled.store(true, std::memory_order_release);
+
+                _renderTasksQueue.pop();
+            }
+        }
+
+        // Every sleeping worker must wake, observe stopRequested and exit.
+        _taskConditionVariable.notify_all();
+
+        for (std::thread& worker : _workers)
+        {
+            if (worker.joinable())
+                worker.join();
+        }
+
+        _workers.clear();
+
+        {
+            std::lock_guard<std::mutex> lock(_taskMutex);
+            _started = false;
+        }
+    }
+
+    bool Executor::submit(RenderTask task)
+    {
+        if (!task.job)
+            throw std::invalid_argument("RenderTask job must not be null");
+
+        if (task.tileIndex < 0 || task.tileIndex >= TILES_PER_CHUNK)
+            throw std::out_of_range("RenderTask tileIndex is outside the chunk");
+        
+        // (1) Enqueue a task
+        {
+            std::lock_guard<std::mutex> lock(_taskMutex);
+
+            if (!_started || _stopRequested.load(std::memory_order_acquire))
+                return false;
+
+            if (static_cast<int>(_renderTasksQueue.size()) >= _settings.renderTasksQueueCapacity)
+                return false;
+
+            _renderTasksQueue.push(std::move(task));
+        }
+
+        _taskConditionVariable.notify_one(); // notify one thread waiting for this condition variable
+
+        return true;
+    }
+
+    bool Executor::popCompleted(std::shared_ptr<RenderJob>& job)
+    {
+        std::lock_guard<std::mutex> lock(_completedMutex);
+
+        if (_completedJobsQueue.empty())
+            return false;
+
+        job = std::move(_completedJobsQueue.front());
+        _completedJobsQueue.pop();
+
+        return true;
+    }
+
+    int Executor::workerCount() const
+    {
+        return _settings.workerCount;
+    }
+
+    int Executor::queuedTaskCount()
+    {
+        std::lock_guard<std::mutex> lock(_taskMutex);
+
+        return static_cast<int>(_renderTasksQueue.size());
+    }
+
+    void Executor::workerLoop()
+    {
+        while (true)
+        {
+            RenderTask task;
+
+            {
+                std::unique_lock<std::mutex> lock(_taskMutex);
+
+                _taskConditionVariable.wait(lock, [this]{ return _stopRequested.load(std::memory_order_acquire) || !_renderTasksQueue.empty();});
+
+                if (_stopRequested.load(std::memory_order_acquire))
+                    return;
+
+                task = std::move(_renderTasksQueue.front());
+                _renderTasksQueue.pop();
+            }
+
+            // Process outside the task mutex so other workers can take tasks.
+            const bool jobCompleted = _taskProcessor.process(task, _stopRequested);
+
+            if (jobCompleted)
+            {
+                std::lock_guard<std::mutex> lock(_completedMutex);
+                _completedJobsQueue.push(std::move(task.job));
+            }
+        }
+    }
+
+} // namespace anasa

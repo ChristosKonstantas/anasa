@@ -5,7 +5,7 @@ namespace anasa
 {
 
     inline constexpr int MAX_AUDIO_BLOCK_FRAMES = 4096;
-    inline constexpr int READY_AUDIO_QUEUE_SLOTS = 65;
+    inline constexpr int READY_AUDIO_QUEUE_SLOTS = 64;
 
 } // namespace anasa
 
