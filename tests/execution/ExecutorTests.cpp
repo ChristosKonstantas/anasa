@@ -128,9 +128,9 @@ namespace anasa
         {
             CAPTURE(frame);
 
-            REQUIRE(job->samples[frame] != functions::UNTOUCHED_SAMPLE);
-            REQUIRE(std::isfinite(job->samples[frame]));
-            REQUIRE(std::abs(job->samples[frame]) <= 1.0f);
+            REQUIRE(job->samples[0][frame] != functions::UNTOUCHED_SAMPLE);
+            REQUIRE(std::isfinite(job->samples[0][frame]));
+            REQUIRE(std::abs(job->samples[0][frame]) <= 1.0f);
         }
 
         // A job must be published only once, by its final tile.
@@ -175,7 +175,7 @@ namespace anasa
         for (int frame = 0; frame < CHUNK_FRAMES; ++frame)
         {
             CAPTURE(frame);
-            REQUIRE(job->samples[frame] == functions::UNTOUCHED_SAMPLE);
+            REQUIRE(job->samples[0][frame] == functions::UNTOUCHED_SAMPLE);
         }
     }
 
@@ -212,7 +212,7 @@ namespace anasa
         for (int frame = 0; frame < CHUNK_FRAMES; ++frame)
         {
             CAPTURE(frame);
-            REQUIRE(job->samples[frame] == functions::UNTOUCHED_SAMPLE);
+            REQUIRE(job->samples[0][frame] == functions::UNTOUCHED_SAMPLE);
         }
     }
 

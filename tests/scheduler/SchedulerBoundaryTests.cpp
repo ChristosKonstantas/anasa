@@ -20,6 +20,8 @@ namespace anasa
         {
             audioSettings.sampleRate = std::numeric_limits<int>::min();
         }
+        SECTION("Zero channels") { audioSettings.channelCount = 0; }
+        SECTION("Negative channels") { audioSettings.channelCount = -1; }
         SECTION("Large mismatched timeline")
         {
             audioSettings.audioBlockFrames = 1;

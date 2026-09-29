@@ -32,15 +32,18 @@ namespace anasa
 
         std::size_t offset = tileIndex * TILE_FRAMES;
 
-        for (std::size_t i = 0; i < TILE_FRAMES; i++)
-            job.samples[offset + i] = sampleForTile(tileIndex);
+        for (int channel = 0; channel < job.samples.channelCount(); ++channel)
+        {
+            for (std::size_t i = 0; i < TILE_FRAMES; i++)
+                job.samples[channel][offset + i] = sampleForTile(tileIndex, channel);
+        }
 
         return true;
     }
 
-    float TestTileRenderer::sampleForTile(int tileIndex)
+    float TestTileRenderer::sampleForTile(int tileIndex, int channel)
     {
-        return 0.1f * static_cast<float>(tileIndex + 1);
+        return 0.1f * static_cast<float>(tileIndex + 1) + 0.01f * static_cast<float>(channel);
     }
     
 } // namespace anasa

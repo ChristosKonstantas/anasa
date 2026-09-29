@@ -18,7 +18,7 @@ namespace anasa
 
         bool renderTile(RenderJob &job, int tileIndex, const std::atomic<bool> &stopRequested) const override;
 
-        static float sampleForTile(int tileIndex);
+        static float sampleForTile(int tileIndex, int channel);
 
         mutable std::array<std::atomic<int>, TILES_PER_CHUNK> calls{};
 

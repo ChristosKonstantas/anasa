@@ -21,6 +21,7 @@ namespace anasa
                          int totalFrames, SharedState& sharedState, VersionTable& versionTable, IRenderExecutor& executor, SpscQueue<AudioBlock>& readyAudioQueue)
         : _settings(schedulerSettings),
           _audioBlockFrames(audioSettings.audioBlockFrames),
+          _channelCount(audioSettings.channelCount),
           _contextFrames(renderSettings.contextFrames),
           _totalFrames(totalFrames),
           _chunkCount(versionTable.count()),
@@ -33,7 +34,6 @@ namespace anasa
           _commandQueue(validateCommandQueueSlots(schedulerSettings.commandQueueSlots)),
           _pendingTiles(SchedulingPolicyCompare(createSchedulingPolicy(schedulerSettings.policyType)), makeReservedTileStorage(_settings.maxPendingTiles)),
           _reclassificationBuffer(makeReservedTileStorage(_settings.maxPendingTiles)),
-          _cache(_chunkCount),
           _activeJobs(_chunkCount),
           _stopRequested(false),
           _started(false),
@@ -49,6 +49,9 @@ namespace anasa
 
         if (audioSettings.sampleRate <= 0)
             throw std::invalid_argument("sampleRate must be greater than zero");
+
+        if (_channelCount <= 0)
+            throw std::invalid_argument("channelCount must be greater than zero");
 
         if (_audioBlockFrames <= 0)
             throw std::invalid_argument("audioBlockFrames must be greater than zero");
@@ -99,6 +102,11 @@ namespace anasa
         if (_chunkCount != expectedChunkCount)
             throw std::invalid_argument("VersionTable size does not match timeline chunk count");
         
+        _cache.reserve(static_cast<std::size_t>(_chunkCount));
+
+        for (int chunk = 0; chunk < _chunkCount; ++chunk)
+            _cache.emplace_back(_channelCount);
+
         _viewportLastFrame = audioSettings.sampleRate > _totalFrames / 2 ? _totalFrames : 2 * audioSettings.sampleRate;
     }
 
@@ -327,14 +335,20 @@ namespace anasa
             if (activeJob != job)
                 continue;
 
-            if (job->cancelled.load(std::memory_order_relaxed) || _versionTable.get(chunk) != job->version)
+            if (job->cancelled.load(std::memory_order_relaxed) || _versionTable.get(chunk) != job->version ||
+                job->samples.channelCount() != _channelCount || job->samples.frameCount() != CHUNK_FRAMES)
             {
                 activeJob.reset();
                 continue;
             }
 
+            for (int channel = 0; channel < _channelCount; ++channel)
+            {
+                for (int sample = 0; sample < job->samples.frameCount(); ++sample)
+                    _cache[chunk].samples[channel][sample] = job->samples[channel][sample];
+            }
+
             _cache[chunk].version = job->version;
-            _cache[chunk].samples = job->samples;
 
             activeJob.reset();
         }
@@ -380,8 +394,9 @@ namespace anasa
                 block.firstFrame = blockFirstFrame;
                 block.frameCount = _audioBlockFrames;
 
-                for (int frame = 0; frame < _audioBlockFrames; ++frame)
-                    block.samples[frame] = _cache[chunk].samples[chunkOffset + frame];
+                // AudioBlock remains mono until the publication/output migration.
+                const auto source = _cache[chunk].samples[0];
+                std::copy_n(source.begin() + chunkOffset, _audioBlockFrames, block.samples.begin());
             });
 
             if (!pushed)
@@ -562,7 +577,7 @@ namespace anasa
             currentJob->cancelled.store(true, std::memory_order_relaxed);
 
         // now, activeJob will be replaced with a new job below
-        std::shared_ptr<RenderJob> jobToSchedule = std::make_shared<RenderJob>();
+        std::shared_ptr<RenderJob> jobToSchedule = std::make_shared<RenderJob>(_channelCount);
 
         jobToSchedule->chunk = chunk;
         jobToSchedule->version = version;

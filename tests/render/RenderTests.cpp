@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cmath>
@@ -6,6 +7,7 @@
 #include <iostream>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include "render/Renderer.hpp"
 #include "render/RenderConstants.hpp"
@@ -104,13 +106,14 @@ namespace anasa
     }
 
     /************************************ RENDERER TESTS ************************************/
-    TEST_CASE("Renderer: injected kernel receives absolute frames and content version")
+    TEST_CASE("Renderer: injected kernel receives absolute frames content version and channel")
     {
+        const int channelCount = GENERATE(1, 2, 6, 16);
         VersionTable versions(4);
         versions.bump(2);
         TestRenderKernel kernel;
         Renderer renderer(kernel, versions);
-        RenderJob job;
+        RenderJob job(channelCount);
         functions::initializeJob(job, versions, 2);
         std::atomic<bool> stopRequested{false};
         bool expectedCompletion = true;
@@ -134,22 +137,42 @@ namespace anasa
 
         constexpr int TILE_INDEX = 3;
         REQUIRE(renderer.renderTile(job, TILE_INDEX, stopRequested) == expectedCompletion);
-        REQUIRE(kernel.callCount() == (expectedCompletion ? TILE_FRAMES : 0));
+        REQUIRE(kernel.callCount() == (expectedCompletion ? TILE_FRAMES * channelCount : 0));
         REQUIRE(job.cancelled.load(std::memory_order_relaxed) == !expectedCompletion);
         REQUIRE(job.tilesRemaining.load(std::memory_order_relaxed) == TILES_PER_CHUNK);
         REQUIRE(job.chunk == 2);
         REQUIRE(job.version == 2);
 
-        for (int frame = 0; frame < CHUNK_FRAMES; ++frame)
+        for (int channel = 0; channel < channelCount; ++channel)
         {
-            CAPTURE(frame);
-            float expected = functions::UNTOUCHED_SAMPLE;
+            for (int frame = 0; frame < CHUNK_FRAMES; ++frame)
+            {
+                CAPTURE(channel, frame);
+                float expected = functions::UNTOUCHED_SAMPLE;
 
-            if (expectedCompletion && frame >= TILE_INDEX * TILE_FRAMES && frame < (TILE_INDEX + 1) * TILE_FRAMES)
-                expected = static_cast<float>(2 * CHUNK_FRAMES + frame) / 16384.0f + 2.0f / 128.0f;
+                if (expectedCompletion && frame >= TILE_INDEX * TILE_FRAMES && frame < (TILE_INDEX + 1) * TILE_FRAMES)
+                    expected = static_cast<float>(2 * CHUNK_FRAMES + frame) / 16384.0f + 2.0f / 128.0f + static_cast<float>(channel) / 32.0f;
 
-            REQUIRE(job.samples[frame] == expected);
+                REQUIRE(job.samples[channel][frame] == expected);
+            }
         }
+    }
+
+    TEST_CASE("Renderer: rejects malformed job storage before invoking the kernel")
+    {
+        VersionTable versions(1);
+        TestRenderKernel kernel;
+        Renderer renderer(kernel, versions);
+        RenderJob job(1);
+        job.version = versions.get(0);
+        std::atomic<bool> stopRequested{false};
+
+        SECTION("Empty storage") { job.samples = AudioBuffer{}; }
+        SECTION("Incomplete chunk") { job.samples = AudioBuffer(2, CHUNK_FRAMES - 1); }
+        SECTION("Oversized chunk") { job.samples = AudioBuffer(2, CHUNK_FRAMES + 1); }
+
+        REQUIRE_THROWS_AS(renderer.renderTile(job, 0, stopRequested), std::invalid_argument);
+        REQUIRE(kernel.callCount() == 0);
     }
     TEST_CASE("Renderer: renders through tile and version-reader interfaces")
     {
@@ -157,10 +180,10 @@ namespace anasa
         SyntheticRenderKernel kernel(48000, functions::makeTestRenderSettings().workIterations);
         Renderer renderer(kernel, versions);
         const ITileRenderer& tileRenderer = renderer;
-        RenderJob job;
+        RenderJob job(1);
         job.chunk = 0;
         job.version = 7;
-        job.samples.fill(functions::UNTOUCHED_SAMPLE);
+        std::fill(job.samples[0].begin(), job.samples[0].end(), functions::UNTOUCHED_SAMPLE);
         std::atomic<bool> stopRequested{false};
 
         REQUIRE(tileRenderer.renderTile(job, 1, stopRequested));
@@ -172,11 +195,11 @@ namespace anasa
             CAPTURE(frame);
             if (frame >= TILE_FRAMES && frame < 2 * TILE_FRAMES)
             {
-                REQUIRE(job.samples[frame] != functions::UNTOUCHED_SAMPLE);
-                REQUIRE(std::isfinite(job.samples[frame]));
+                REQUIRE(job.samples[0][frame] != functions::UNTOUCHED_SAMPLE);
+                REQUIRE(std::isfinite(job.samples[0][frame]));
             }
             else
-                REQUIRE(job.samples[frame] == functions::UNTOUCHED_SAMPLE);
+                REQUIRE(job.samples[0][frame] == functions::UNTOUCHED_SAMPLE);
         }
     }
 
@@ -186,10 +209,10 @@ namespace anasa
         SyntheticRenderKernel kernel(48000, functions::makeTestRenderSettings().workIterations);
         Renderer renderer(kernel, versions);
         const ITileRenderer& tileRenderer = renderer;
-        RenderJob job;
+        RenderJob job(1);
         job.chunk = 0;
         job.version = 7;
-        job.samples.fill(functions::UNTOUCHED_SAMPLE);
+        std::fill(job.samples[0].begin(), job.samples[0].end(), functions::UNTOUCHED_SAMPLE);
         std::atomic<bool> stopRequested{false};
 
         REQUIRE_FALSE(tileRenderer.renderTile(job, 0, stopRequested));
@@ -198,13 +221,13 @@ namespace anasa
 
         int writtenFrames = 0;
         for (int frame = 0; frame < TILE_FRAMES; ++frame)
-            if (job.samples[frame] != functions::UNTOUCHED_SAMPLE)
+            if (job.samples[0][frame] != functions::UNTOUCHED_SAMPLE)
                 ++writtenFrames;
 
         REQUIRE(writtenFrames > 0);
         REQUIRE(writtenFrames < TILE_FRAMES);
         for (int frame = TILE_FRAMES; frame < CHUNK_FRAMES; ++frame)
-            REQUIRE(job.samples[frame] == functions::UNTOUCHED_SAMPLE);
+            REQUIRE(job.samples[0][frame] == functions::UNTOUCHED_SAMPLE);
     }
 
     TEST_CASE("Renderer: final cancellation check rejects a fully written obsolete tile")
@@ -214,10 +237,10 @@ namespace anasa
         TestVersionReader versions(currentReads);
         SyntheticRenderKernel kernel(48000, functions::makeTestRenderSettings().workIterations);
         Renderer renderer(kernel, versions);
-        RenderJob job;
+        RenderJob job(1);
         job.chunk = 0;
         job.version = 7;
-        job.samples.fill(functions::UNTOUCHED_SAMPLE);
+        std::fill(job.samples[0].begin(), job.samples[0].end(), functions::UNTOUCHED_SAMPLE);
         std::atomic<bool> stopRequested{false};
 
         REQUIRE_FALSE(renderer.renderTile(job, 0, stopRequested));
@@ -225,10 +248,10 @@ namespace anasa
         REQUIRE(job.tilesRemaining.load(std::memory_order_relaxed) == TILES_PER_CHUNK);
 
         for (int frame = 0; frame < TILE_FRAMES; ++frame)
-            REQUIRE(job.samples[frame] != functions::UNTOUCHED_SAMPLE);
+            REQUIRE(job.samples[0][frame] != functions::UNTOUCHED_SAMPLE);
 
         for (int frame = TILE_FRAMES; frame < CHUNK_FRAMES; ++frame)
-            REQUIRE(job.samples[frame] == functions::UNTOUCHED_SAMPLE);
+            REQUIRE(job.samples[0][frame] == functions::UNTOUCHED_SAMPLE);
     }
 
     TEST_CASE("Renderer: rejects invalid tile and chunk indices")
@@ -237,7 +260,7 @@ namespace anasa
         SyntheticRenderKernel kernel(48000, functions::makeTestRenderSettings().workIterations);
         Renderer renderer(kernel, versions);
 
-        RenderJob job;
+        RenderJob job(1);
         functions::initializeJob(job, versions, 1);
 
         std::atomic<bool> stopRequested{false};
@@ -259,7 +282,7 @@ namespace anasa
         SyntheticRenderKernel kernel(48000, functions::makeTestRenderSettings().workIterations);
         Renderer renderer(kernel, versions);
 
-        RenderJob job;
+        RenderJob job(1);
         functions::initializeJob(job, versions, 1);
 
         std::atomic<bool> stopRequested{false};
@@ -282,16 +305,16 @@ namespace anasa
 
             if (frame >= firstFrame && frame < lastFrame)
             {
-                REQUIRE(job.samples[frame] != functions::UNTOUCHED_SAMPLE);
-                REQUIRE(std::isfinite(job.samples[frame]));
-                REQUIRE(std::abs(job.samples[frame]) <= 1.0f);
+                REQUIRE(job.samples[0][frame] != functions::UNTOUCHED_SAMPLE);
+                REQUIRE(std::isfinite(job.samples[0][frame]));
+                REQUIRE(std::abs(job.samples[0][frame]) <= 1.0f);
 
-                if (std::abs(job.samples[frame]) > 0.000001f)
+                if (std::abs(job.samples[0][frame]) > 0.000001f)
                     generatedNonZeroSample = true;
             }
             else
             {
-                REQUIRE(job.samples[frame] == functions::UNTOUCHED_SAMPLE);
+                REQUIRE(job.samples[0][frame] == functions::UNTOUCHED_SAMPLE);
             }
         }
 
@@ -304,8 +327,8 @@ namespace anasa
         SyntheticRenderKernel kernel(48000, functions::makeTestRenderSettings().workIterations);
         Renderer renderer(kernel, versions);
 
-        RenderJob firstJob;
-        RenderJob secondJob;
+        RenderJob firstJob(1);
+        RenderJob secondJob(1);
 
         functions::initializeJob(firstJob, versions, 1);
         functions::initializeJob(secondJob, versions, 1);
@@ -322,7 +345,7 @@ namespace anasa
         for (int frame = firstFrame; frame < lastFrame; ++frame)
         {
             CAPTURE(frame);
-            REQUIRE(firstJob.samples[frame] == secondJob.samples[frame]);
+            REQUIRE(firstJob.samples[0][frame] == secondJob.samples[0][frame]);
         }
     }
 
@@ -332,7 +355,7 @@ namespace anasa
         SyntheticRenderKernel kernel(48000, functions::makeTestRenderSettings().workIterations);
         Renderer renderer(kernel, versions);
 
-        RenderJob job;
+        RenderJob job(1);
         functions::initializeJob(job, versions, 1);
 
         std::atomic<bool> stopRequested{true};
@@ -340,7 +363,7 @@ namespace anasa
         REQUIRE_FALSE(renderer.renderTile(job, 0, stopRequested));
         REQUIRE(job.cancelled.load(std::memory_order_relaxed));
 
-        for (float sample : job.samples)
+        for (float sample : job.samples[0])
             REQUIRE(sample == functions::UNTOUCHED_SAMPLE);
     }
 
@@ -350,7 +373,7 @@ namespace anasa
         SyntheticRenderKernel kernel(48000, functions::makeTestRenderSettings().workIterations);
         Renderer renderer(kernel, versions);
 
-        RenderJob job;
+        RenderJob job(1);
         functions::initializeJob(job, versions, 1);
 
         // Simulate an edit *after* the job was created.
@@ -361,7 +384,7 @@ namespace anasa
         REQUIRE_FALSE(renderer.renderTile(job, 0, stopRequested));
         REQUIRE(job.cancelled.load(std::memory_order_relaxed));
 
-        for (float sample : job.samples)
+        for (float sample : job.samples[0])
             REQUIRE(sample == functions::UNTOUCHED_SAMPLE);
     }
 
@@ -372,7 +395,7 @@ namespace anasa
         SyntheticRenderKernel kernel(48000, functions::makeTestRenderSettings().workIterations);
         Renderer renderer(kernel, versions);
 
-        RenderJob job;
+        RenderJob job(1);
         functions::initializeJob(job, versions, 1);
 
         std::atomic<bool> stopRequested{false};
@@ -414,9 +437,9 @@ namespace anasa
         for (int frame = 0; frame < CHUNK_FRAMES; ++frame)
         {
             CAPTURE(frame);
-            REQUIRE(job.samples[frame] != functions::UNTOUCHED_SAMPLE);
-            REQUIRE(std::isfinite(job.samples[frame]));
-            REQUIRE(std::abs(job.samples[frame]) <= 1.0f);
+            REQUIRE(job.samples[0][frame] != functions::UNTOUCHED_SAMPLE);
+            REQUIRE(std::isfinite(job.samples[0][frame]));
+            REQUIRE(std::abs(job.samples[0][frame]) <= 1.0f);
         }
     }
 
@@ -429,7 +452,7 @@ namespace anasa
         Renderer renderer(kernel, versions);
         std::atomic<bool> stopRequested{false};
 
-        RenderJob job;
+        RenderJob job(1);
         functions::initializeJob(job, versions, 1);
 
         benchmarks::Benchmark benchmark(100, 10, 10);
@@ -441,7 +464,7 @@ namespace anasa
                 throw std::runtime_error("renderTile() was cancelled");
 
             int sampleIndex = tileIndex * TILE_FRAMES + TILE_FRAMES / 2;
-            double sample = job.samples[sampleIndex];
+            double sample = job.samples[0][sampleIndex];
 
             return sample * sample;
         });

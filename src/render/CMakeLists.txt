@@ -24,4 +24,5 @@ anasa_add_module(
         kernels/SyntheticRenderKernel.hpp
 )
 
+target_link_libraries(render-contracts INTERFACE audio-buffer)
 target_link_libraries(renderer PUBLIC render-contracts)

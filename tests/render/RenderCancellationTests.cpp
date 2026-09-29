@@ -12,7 +12,7 @@ namespace anasa
     {
         VersionTable versions(4);
         RenderCancellation cancellation(versions);
-        RenderJob job;
+        RenderJob job(1);
         functions::initializeJob(job, versions, 1);
         std::atomic<bool> stopRequested{false};
         bool expected = true;
