@@ -31,7 +31,7 @@ namespace anasa
 
         for (int channel = 0; channel < _settings.channelCount; ++channel)
         {
-            _outputChannels[channel] = _output.channel(channel).data();
+            _outputChannels[channel] = _output[channel].data();
         }
     }
 

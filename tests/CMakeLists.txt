@@ -41,6 +41,7 @@ if(BUILD_TESTS)
                           Catch2::Catch2WithMain
                           funcs
                           queues
+                          audio-buffer
                           audio-processing 
                           audio-simulator
                           playback
