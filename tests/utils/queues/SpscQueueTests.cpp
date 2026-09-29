@@ -409,8 +409,8 @@ TEST_CASE("SpscQueue: constructs configured slots and preserves their storage")
 
                 if (cycle == 0)
                 {
-                    for (int value : item.values)
-                        REQUIRE(value == value);
+                    for (int storedValue : item.values)
+                        REQUIRE(storedValue == value);
 
                     addresses[slot] = item.values.data();
                 }

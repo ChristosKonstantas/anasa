@@ -6,6 +6,7 @@
 #include <new>
 #include <utility>
 #include <stdexcept>
+#include <concepts>
 
 namespace anasa
 {
