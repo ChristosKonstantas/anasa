@@ -44,7 +44,7 @@ namespace anasa
             }
 
             const int globalFrame = chunkFirstFrame + frame;
-            job.samples[frame] = _kernel.renderSample(globalFrame, job.version);
+            job.samples[frame] = _kernel.renderSample(0, globalFrame, job.version);
         }
 
         // Content may change after the last periodic check.

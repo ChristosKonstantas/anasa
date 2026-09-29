@@ -41,9 +41,26 @@ namespace anasa
             CAPTURE(sample.sampleRate, sample.workIterations, sample.globalFrame, sample.version);
             SyntheticRenderKernel kernel(sample.sampleRate, sample.workIterations);
 
-            const float actual = kernel.renderSample(sample.globalFrame, sample.version);
+            const float actual = kernel.renderSample(0, sample.globalFrame, sample.version);
             REQUIRE(std::abs(actual - sample.expected) <= 0.000001f);
         }
+    }
+
+    TEST_CASE("SyntheticRenderKernel: renders deterministic distinct channels")
+    {
+        SyntheticRenderKernel kernel(48000, 0);
+        const float mono = kernel.renderSample(0, 255, 7);
+
+        for (int channel = 1; channel < 16; ++channel)
+        {
+            const float sample = kernel.renderSample(channel, 255, 7);
+            REQUIRE(std::isfinite(sample));
+            REQUIRE(std::abs(sample) <= 1.0f);
+            REQUIRE(sample != mono);
+            REQUIRE(sample == kernel.renderSample(channel, 255, 7));
+        }
+
+        REQUIRE_THROWS_AS(kernel.renderSample(-1, 255, 7), std::out_of_range);
     }
 
 } // namespace anasa

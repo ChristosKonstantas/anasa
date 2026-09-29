@@ -10,7 +10,7 @@ namespace anasa
     public:
         SyntheticRenderKernel(int sampleRate, int workIterations);
 
-        float renderSample(int globalFrame, int version) const override;
+        float renderSample(int channel, int globalFrame, int version) const override;
 
     private:
         int _sampleRate;

@@ -18,11 +18,14 @@ namespace anasa
             throw std::invalid_argument("Work iterations can not be negative");
     }
 
-    float SyntheticRenderKernel::renderSample(int globalFrame, int version) const
+    float SyntheticRenderKernel::renderSample(int channel, int globalFrame, int version) const
     {
+        if (channel < 0)
+            throw std::out_of_range("channel index must not be negative");
+
         const float revision = static_cast<float>(version % 13) / 13.0f;
         const float seconds = static_cast<float>(globalFrame) / static_cast<float>(_sampleRate);
-        const float baseFrequency = 110.0f + 14.0f * revision;
+        const float baseFrequency = 110.0f + 14.0f * revision + 17.0f * static_cast<float>(channel);
         const float phase = 2.0f * PI * baseFrequency * seconds;
 
         float voice = 0.18f * std::sin(phase);
