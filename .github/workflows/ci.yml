@@ -11,6 +11,7 @@ on:
     branches:
       - main
       - multichannel-support
+      - spsc
 
 permissions:
   contents: read
