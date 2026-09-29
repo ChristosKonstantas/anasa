@@ -5,6 +5,7 @@ if(BUILD_TESTS)
         functions/Functions.hpp
         benchmarks/Benchmark.hpp
         utils/queues/SpscQueueTests.cpp
+        utils/queues/TestQueuePayload.cpp
         render/TestVersionReader.cpp
         render/TestRenderKernel.cpp
         render/RenderTests.cpp

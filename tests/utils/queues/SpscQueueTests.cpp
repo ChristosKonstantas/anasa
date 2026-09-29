@@ -1,9 +1,14 @@
 #include <thread>
 #include <vector>
+#include <array>
+#include <stdexcept>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include "utils/queues/SpscQueue.hpp"
+#include "audio/AudioBuffer.hpp"
+#include "TestQueuePayload.hpp"
+#include "TestQueueAllocator.hpp"
 
 #ifdef enable_benchmarks
 
@@ -382,6 +387,206 @@ TEST_CASE("SpscQueue transfers objects without copy or move")
     REQUIRE(item->value == 42);
 
     REQUIRE(queue.pop());
+}
+
+TEST_CASE("SpscQueue: constructs configured slots and preserves their storage")
+{
+    const int numSlots = 3;
+    const int size = 8;
+    const int value = 44;
+
+    anasa::SpscQueue<anasa::TestQueuePayload> queue(numSlots, size, value);
+    REQUIRE(queue.isEmpty());
+    std::array<const int*, numSlots> addresses{};
+
+    for (int cycle = 0; cycle < numSlots; ++cycle)
+    {
+        for (int slot = 0; slot < numSlots; ++slot)
+        {
+            REQUIRE(queue.pushWith([&](anasa::TestQueuePayload& item)
+            {
+                REQUIRE(item.values.size() == size);
+
+                if (cycle == 0)
+                {
+                    for (int value : item.values)
+                        REQUIRE(value == value);
+
+                    addresses[slot] = item.values.data();
+                }
+                else
+                    REQUIRE(item.values.data() == addresses[slot]);
+
+                item.values[0] = cycle * numSlots + slot;
+            }));
+        }
+
+        bool called = false;
+        REQUIRE_FALSE(queue.pushWith([&](anasa::TestQueuePayload&){ called = true; }));
+        REQUIRE_FALSE(called);
+
+        for (int slot = 0; slot < numSlots; ++slot)
+        {
+            const anasa::TestQueuePayload* item = queue.front();
+            REQUIRE(item != nullptr);
+            REQUIRE(item->values[0] == cycle * numSlots + slot);
+            REQUIRE(queue.pop());
+        }
+
+        REQUIRE(queue.isEmpty());
+        queue.reset();
+    }
+
+    REQUIRE_THROWS_AS(anasa::SpscQueue<anasa::TestQueuePayload>(0, 8, 42), std::invalid_argument);
+}
+
+TEST_CASE("SpscQueue: failed slot construction destroys objects and releases allocation")
+{
+    anasa::QueueConstructionState state;
+    state.failOnAttempt = 3;
+    using Allocator = anasa::TestQueueAllocator<anasa::TestQueuePayload>;
+    using Queue = anasa::SpscQueue<anasa::TestQueuePayload, Allocator>;
+    Allocator allocator(&state);
+
+    REQUIRE_THROWS_AS(Queue(std::allocator_arg, allocator, 4, 8, 44, &state), std::runtime_error);
+
+    REQUIRE(state.attempts == 3);
+    REQUIRE(state.alive == 0);
+    REQUIRE(state.destroyed == 2);
+    REQUIRE(state.allocations == 1);
+    REQUIRE(state.deallocations == 1);
+}
+
+TEST_CASE("SpscQueue: constructs AudioBuffer slots from dimensions")
+{
+    const int numSlots = 3;
+    const int numChannels = 2;
+    const int numSamples = 128;
+    anasa::SpscQueue<anasa::AudioBuffer> queue(numSlots, numChannels, numSamples);
+    REQUIRE(queue.isEmpty());
+
+    for (int slot = 0; slot < numSlots; ++slot)
+    {
+        REQUIRE(queue.pushWith([&](anasa::AudioBuffer& buffer)
+        {
+            REQUIRE(buffer.channelCount() == numChannels);
+            REQUIRE(buffer.frameCount() == numSamples);
+
+            for (int channel = 0; channel < buffer.channelCount(); ++channel)
+            {
+                for (float& sample : buffer[channel])
+                {
+                    REQUIRE(sample == 0.0f);
+                    sample = static_cast<float>(slot * 10 + channel);
+                }
+            }
+        }));
+    }
+
+    for (int slot = 0; slot < numSlots; ++slot)
+    {
+        const anasa::AudioBuffer* buffer = queue.front();
+        REQUIRE(buffer != nullptr);
+
+        for (int channel = 0; channel < buffer->channelCount(); ++channel)
+        {
+            for (float sample : (*buffer)[channel])
+                REQUIRE(sample == static_cast<float>(slot * 10 + channel));
+        }
+
+        REQUIRE(queue.pop());
+    }
+
+    REQUIRE(queue.isEmpty());
+}
+
+TEST_CASE("SpscQueue: copies AudioBuffer prototypes into independent slots")
+{
+    SECTION("Existing prototype")
+    {
+        const int numSlots = 3;
+        const int numChannels = 2;
+        const int numSamples = 128;
+        anasa::AudioBuffer prototype(numChannels, numSamples);
+
+        for (int channel = 0; channel < prototype.channelCount(); ++channel)
+        {
+            for (int frame = 0; frame < prototype.frameCount(); ++frame)
+                prototype[channel][frame] = static_cast<float>(channel * 100 + frame);
+        }
+
+        anasa::SpscQueue<anasa::AudioBuffer> queue(numSlots, prototype);
+        REQUIRE(queue.isEmpty());
+        prototype[0][0] = -1.0f;
+        std::array<const float*, numSlots> addresses{};
+
+        for (int slot = 0; slot < numSlots; ++slot)
+        {
+            REQUIRE(queue.pushWith([&](anasa::AudioBuffer& buffer)
+            {
+                REQUIRE(buffer.channelCount() == numChannels);
+                REQUIRE(buffer.frameCount() == numSamples);
+                addresses[slot] = buffer[0].data();
+                REQUIRE(addresses[slot] != prototype[0].data());
+
+                for (int previous = 0; previous < slot; ++previous)
+                    REQUIRE(addresses[slot] != addresses[previous]);
+
+                for (int channel = 0; channel < buffer.channelCount(); ++channel)
+                {
+                    for (int frame = 0; frame < buffer.frameCount(); ++frame)
+                        REQUIRE(buffer[channel][frame] == static_cast<float>(channel * 100 + frame));
+                }
+
+                buffer[0][0] = static_cast<float>(-2 - slot);
+            }));
+        }
+
+        for (int slot = 0; slot < numSlots; ++slot)
+        {
+            const anasa::AudioBuffer* buffer = queue.front();
+            REQUIRE(buffer != nullptr);
+            REQUIRE((*buffer)[0][0] == static_cast<float>(-2 - slot));
+            REQUIRE(queue.pop());
+        }
+
+        REQUIRE(prototype[0][0] == -1.0f);
+        REQUIRE(queue.isEmpty());
+    }
+
+    SECTION("Temporary prototype")
+    {
+        int numSlots = 2;
+        const int numChannels = 20;
+        const int numSamples = 1024;
+        anasa::SpscQueue<anasa::AudioBuffer> queue(numSlots, anasa::AudioBuffer(numChannels, numSamples));
+        REQUIRE(queue.isEmpty());
+
+        for (int slot = 0; slot < numSlots; ++slot)
+        {
+            REQUIRE(queue.pushWith([&](anasa::AudioBuffer& buffer)
+            {
+                REQUIRE(buffer.channelCount() == numChannels);
+                REQUIRE(buffer.frameCount() == numSamples);
+                for (int i = 0; i < numChannels; ++i)
+                {
+                    REQUIRE(buffer[i][0] == 0.0f);
+                    REQUIRE(buffer[i][numSamples - 1] == 0.0f);
+                }    
+                buffer[numChannels - 1][numSamples - 1] = static_cast<float>(slot + 1);
+            }));
+        }
+
+        for (int slot = 0; slot < numSlots; ++slot)
+        {
+            const anasa::AudioBuffer* buffer = queue.front();
+            REQUIRE(buffer != nullptr);
+            REQUIRE((*buffer)[numChannels - 1][numSamples - 1] == static_cast<float>(slot + 1));
+            REQUIRE(queue.pop());
+        }
+
+        REQUIRE(queue.isEmpty());
+    }
 }
 
 #ifdef enable_benchmarks
