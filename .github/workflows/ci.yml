@@ -5,11 +5,12 @@ on:
 
   push:
     branches:
-      - main
+      - '**'
 
   pull_request:
     branches:
       - main
+      - multichannel-support
 
 permissions:
   contents: read
