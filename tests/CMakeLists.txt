@@ -16,6 +16,7 @@ if(BUILD_TESTS)
         execution/ExecutorTests.cpp
         audio/AudioSimulatorTests.cpp
         audio/AudioBlockProcessorTests.cpp
+        audio/AudioBufferTests.cpp
         playback/PlaybackProtocolTests.cpp
         playback/PlaybackControllerTests.cpp
         scheduler/SchedulingPolicyTests.cpp

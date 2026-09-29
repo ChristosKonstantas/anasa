@@ -8,6 +8,7 @@
 #include "audio/AudioConstants.hpp"
 #include "audio/AudioSettings.hpp"
 #include "audio/IAudioBlockProcessor.hpp"
+#include "audio/AudioBuffer.hpp"
 
 namespace anasa
 {
@@ -40,7 +41,7 @@ namespace anasa
         AudioSettings                             _settings;
         const std::atomic<bool>&                  _engineStop;
         IAudioBlockProcessor&                     _processor;
-        std::vector<std::vector<float>>           _output;
+        AudioBuffer                               _output;
         std::vector<float*>                       _outputChannels;
         std::thread                               _audioThread;
         std::atomic<bool>                         _stopRequested{false};

@@ -14,6 +14,8 @@ anasa_add_module(
     SOURCES
         AudioBlockProcessor.hpp
         AudioBlockProcessor.cpp
+        AudioBuffer.hpp
+        AudioBuffer.cpp
 )
 
 target_link_libraries(audio-processing PUBLIC audio-contracts queues playback)
