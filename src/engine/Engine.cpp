@@ -12,7 +12,7 @@ namespace anasa
          _chunkCount(1 + (_totalFrames - 1) / CHUNK_FRAMES), // (ceil(_totalFrames/CHUNK_FRAMES))
          _versionTable(_chunkCount),
          _sharedState(),
-         _readyAudioQueue(READY_AUDIO_QUEUE_SLOTS),
+         _readyAudioQueue(READY_AUDIO_QUEUE_SLOTS, _settings.audio.channelCount, _settings.audio.audioBlockFrames),
          _renderKernel(_settings.audio.sampleRate, _settings.render.workIterations),
          _renderer(_renderKernel, _versionTable),
          _executor(_settings.executor, _renderer),
@@ -118,6 +118,13 @@ namespace anasa
 
         if (settings.audio.sampleRate <= 0)
             throw std::invalid_argument("sampleRate must be greater than zero");
+        
+        // Validate dimensions before queue-slot buffers are allocated.
+        if (settings.audio.channelCount <= 0)
+            throw std::invalid_argument("channelCount must be greater than zero");
+
+        if (settings.audio.audioBlockFrames <= 0 || settings.audio.audioBlockFrames > MAX_AUDIO_BLOCK_FRAMES)
+            throw std::invalid_argument("Invalid internal audio block size");
 
         if (settings.timelineInSeconds > std::numeric_limits<int>::max() / settings.audio.sampleRate)
             throw std::invalid_argument("Timeline frame count exceeds the supported range");

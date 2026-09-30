@@ -341,11 +341,12 @@ namespace anasa
                 activeJob.reset();
                 continue;
             }
-
+            CacheEntry &cacheForCurrentChunk = _cache[chunk];
             for (int channel = 0; channel < _channelCount; ++channel)
             {
+                const std::span<float>& jobChannel = job->samples[channel];
                 for (int sample = 0; sample < job->samples.frameCount(); ++sample)
-                    _cache[chunk].samples[channel][sample] = job->samples[channel][sample];
+                    cacheForCurrentChunk.samples[channel][sample] = jobChannel[sample];
             }
 
             _cache[chunk].version = job->version;
@@ -390,13 +391,20 @@ namespace anasa
 
             const bool pushed = _readyAudioQueue.pushWith([this, generation, blockFirstFrame, chunk, chunkOffset](AudioBlock& block)
             {
+                assert(block.samples.channelCount() == _channelCount);
+                assert(block.samples.frameCount() >= _audioBlockFrames);
+
                 block.generation = generation;
                 block.firstFrame = blockFirstFrame;
                 block.frameCount = _audioBlockFrames;
 
-                // AudioBlock remains mono until the publication/output migration.
-                const auto source = _cache[chunk].samples[0];
-                std::copy_n(source.begin() + chunkOffset, _audioBlockFrames, block.samples[0].begin());
+                const CacheEntry& cacheForCurrentChunk = _cache[chunk];
+                for (int channel = 0; channel < _channelCount; ++channel)
+                {
+                    const auto cacheChannelSamples = cacheForCurrentChunk.samples[channel];
+                    for (int frame = 0; frame < _audioBlockFrames; ++frame)
+                        block.samples[channel][frame] = cacheChannelSamples[chunkOffset + frame];
+                }
             });
 
             if (!pushed)

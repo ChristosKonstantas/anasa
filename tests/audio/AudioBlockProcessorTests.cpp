@@ -17,7 +17,7 @@ namespace anasa
     TEST_CASE("AudioBlockProcessor: rejects invalid internal block sizes")
     {
         SharedState state;
-        SpscQueue<AudioBlock> queue(4);
+        SpscQueue<AudioBlock> queue(4, 1, 4);
 
         REQUIRE_THROWS_AS(AudioBlockProcessor(0, state, queue), std::invalid_argument);
         REQUIRE_THROWS_AS(AudioBlockProcessor(-1, state, queue), std::invalid_argument);
@@ -27,7 +27,7 @@ namespace anasa
     TEST_CASE("AudioBlockProcessor: writes the requested output through its interface")
     {
         SharedState state;
-        SpscQueue<AudioBlock> queue(4);
+        SpscQueue<AudioBlock> queue(4, 1, 4);
         AudioBlockProcessor processor(4, state, queue);
         IAudioBlockProcessor& callback = processor;
         std::array<float, 6> output;
@@ -55,7 +55,7 @@ namespace anasa
     TEST_CASE("AudioBlockProcessor: pause and shutdown write silence without consuming")
     {
         SharedState state;
-        SpscQueue<AudioBlock> queue(4);
+        SpscQueue<AudioBlock> queue(4, 1, 4);
         AudioBlockProcessor processor(4, state, queue);
         std::array<float, 4> output;
         output.fill(functions::UNTOUCHED_SAMPLE);
@@ -82,7 +82,7 @@ namespace anasa
     TEST_CASE("AudioBlockProcessor: missing or mismatched blocks produce silence and advance")
     {
         SharedState state;
-        SpscQueue<AudioBlock> queue(4);
+        SpscQueue<AudioBlock> queue(4, 1, 4);
         AudioBlockProcessor processor(4, state, queue);
         std::array<float, 4> output;
         output.fill(functions::UNTOUCHED_SAMPLE);
@@ -92,6 +92,38 @@ namespace anasa
         SECTION("Future frame") { REQUIRE(functions::pushTestAudioBlock(queue, 1, 4, 4)); }
         SECTION("Future generation") { REQUIRE(functions::pushTestAudioBlock(queue, 2, 0, 4)); }
         SECTION("Wrong size") { REQUIRE(functions::pushTestAudioBlock(queue, 1, 0, 3)); }
+        SECTION("Insufficient sample storage")
+        {
+            REQUIRE(queue.pushWith([](AudioBlock& block)
+            {
+                block.generation = 1;
+                block.firstFrame = 0;
+                block.frameCount = 4;
+                block.samples = AudioBuffer(1, 3);
+            }));
+        }
+
+        SECTION("Mismatched channel count")
+        {
+            REQUIRE(queue.pushWith([](AudioBlock& block)
+            {
+                block.generation = 1;
+                block.firstFrame = 0;
+                block.frameCount = 4;
+                block.samples = AudioBuffer(2, 4);
+            }));
+        }
+
+        SECTION("Empty sample storage")
+        {
+            REQUIRE(queue.pushWith([](AudioBlock& block)
+            {
+                block.generation = 1;
+                block.firstFrame = 0;
+                block.frameCount = 4;
+                block.samples = AudioBuffer{};
+            }));
+        }
 
         const bool hadBlock = !queue.isEmpty();
         const AudioProcessResult result = processor.processBlock({channels, 4});
@@ -108,7 +140,7 @@ namespace anasa
     TEST_CASE("AudioBlockProcessor: keeps a future block and discards audio arriving too late")
     {
         SharedState state;
-        SpscQueue<AudioBlock> queue(4);
+        SpscQueue<AudioBlock> queue(4, 1, 4);
         AudioBlockProcessor processor(4, state, queue);
         std::array<float, 4> output{};
         float* channels[] = {output.data()};
@@ -133,7 +165,7 @@ namespace anasa
     {
         SharedState state;
         PlaybackProtocol protocol(16, state);
-        SpscQueue<AudioBlock> queue(4);
+        SpscQueue<AudioBlock> queue(4, 1, 4);
         AudioBlockProcessor processor(4, state, queue);
         std::array<float, 4> output{};
         float* channels[] = {output.data()};
@@ -170,11 +202,11 @@ namespace anasa
             REQUIRE(sample == 0.75f);
     }
     
-    TEST_CASE("AudioBlockProcessor: copies mono to every output and advances once")
+    TEST_CASE("AudioBlockProcessor: preserves distinct channels and advances once")
     {
         const int channelCount = GENERATE(1, 2, 6, 16);
         SharedState state;
-        SpscQueue<AudioBlock> queue(4);
+        SpscQueue<AudioBlock> queue(4, channelCount, 6);
         AudioBlockProcessor processor(4, state, queue);
         std::vector<std::array<float, 6>> output(channelCount);
         std::vector<float*> channels(channelCount);
@@ -191,31 +223,41 @@ namespace anasa
             block.firstFrame = 0;
             block.frameCount = 4;
 
-            for (int frame = 0; frame < 4; ++frame)
-                block.samples[0][frame] = 0.125f * (frame + 1);
+            for (int channel = 0; channel < block.samples.channelCount(); ++channel)
+            {
+                for (float& sample : block.samples[channel])
+                    sample = functions::UNTOUCHED_SAMPLE;
+
+                for (int frame = 0; frame < 4; ++frame)
+                    block.samples[channel][frame] =
+                        0.125f * (channel + 1) + 0.015625f * (frame + 1);
+            }
         }));
+
         state.playing.store(true, std::memory_order_release);
 
         const AudioProcessResult result = processor.processBlock({channels, 4});
+
         REQUIRE(result.playing);
         REQUIRE_FALSE(result.underrun);
         REQUIRE(queue.isEmpty());
         REQUIRE(state.nextUnconsumedFrame.load() == 4);
 
-        for (const std::array<float, 6>& channel : output)
+        for (int channel = 0; channel < channelCount; ++channel)
         {
-            REQUIRE(channel.front() == functions::UNTOUCHED_SAMPLE);
-            REQUIRE(channel.back() == functions::UNTOUCHED_SAMPLE);
+            REQUIRE(output[channel].front() == functions::UNTOUCHED_SAMPLE);
+            REQUIRE(output[channel].back() == functions::UNTOUCHED_SAMPLE);
 
             for (int frame = 1; frame <= 4; ++frame)
-                REQUIRE(channel[frame] == 0.125f * frame);
+                REQUIRE(output[channel][frame] ==
+                        0.125f * (channel + 1) + 0.015625f * frame);
         }
     }
 
     TEST_CASE("AudioBlockProcessor: handles disabled channels and silences every active output")
     {
         SharedState state;
-        SpscQueue<AudioBlock> queue(4);
+        SpscQueue<AudioBlock> queue(4, 3, 4);
         AudioBlockProcessor processor(4, state, queue);
         std::array<float, 4> left;
         std::array<float, 4> right;
@@ -238,10 +280,24 @@ namespace anasa
             advances = true;
             underrun = true;
         }
+
         SECTION("Ready audio")
         {
             state.playing.store(true);
-            REQUIRE(functions::pushTestAudioBlock(queue, 1, 0, 4));
+
+            REQUIRE(queue.pushWith([](AudioBlock& block)
+            {
+                block.generation = 1;
+                block.firstFrame = 0;
+                block.frameCount = 4;
+
+                for (int channel = 0; channel < block.samples.channelCount(); ++channel)
+                {
+                    for (float& sample : block.samples[channel])
+                        sample = 0.5f * (channel + 1);
+                }
+            }));
+
             advances = true;
             expected = 0.5f;
         }
@@ -254,14 +310,14 @@ namespace anasa
         for (int frame = 0; frame < 4; ++frame)
         {
             REQUIRE(left[frame] == expected);
-            REQUIRE(right[frame] == expected);
+            REQUIRE(right[frame] == 3 * expected);
         }
     }
 
     TEST_CASE("AudioBlockProcessor: empty output does not consume or advance")
     {
         SharedState state;
-        SpscQueue<AudioBlock> queue(4);
+        SpscQueue<AudioBlock> queue(4, 1, 4);
         AudioBlockProcessor processor(4, state, queue);
         std::array<float, 4> samples;
         samples.fill(functions::UNTOUCHED_SAMPLE);
@@ -284,5 +340,65 @@ namespace anasa
 
         for (const float sample : samples)
             REQUIRE(sample == functions::UNTOUCHED_SAMPLE);
+    }
+
+    TEST_CASE("AudioBlockProcessor: invalid callback sizes do not consume or advance")
+    {
+        const int frameCount = GENERATE(-1, 3, 5);
+        SharedState state;
+        SpscQueue<AudioBlock> queue(4, 1, 4);
+        AudioBlockProcessor processor(4, state, queue);
+        std::array<float, 7> output;
+        output.fill(functions::UNTOUCHED_SAMPLE);
+        float* channels[] = {output.data() + 1};
+
+        REQUIRE(functions::pushTestAudioBlock(queue, 1, 0, 4));
+        state.playing.store(true);
+
+        const AudioProcessResult result = processor.processBlock({channels, frameCount});
+
+        REQUIRE_FALSE(result.playing);
+        REQUIRE_FALSE(result.underrun);
+        REQUIRE_FALSE(queue.isEmpty());
+        REQUIRE(state.nextUnconsumedFrame.load() == 0);
+
+        for (int i = 0; i < static_cast<int>(output.size()); ++i)
+        {
+            const float expected = i >= 1 && i <= frameCount ? 0.0f : functions::UNTOUCHED_SAMPLE;
+
+            REQUIRE(output[i] == expected);
+        }
+    }
+
+    TEST_CASE("AudioBlockProcessor: multichannel underruns silence output and advance one block")
+    {
+        const int channelCount = GENERATE(1, 2, 6, 16);
+        SharedState state;
+        SpscQueue<AudioBlock> queue(4, channelCount, 4);
+        AudioBlockProcessor processor(4, state, queue);
+        AudioBuffer output(channelCount, 4);
+        std::vector<float*> channels(channelCount);
+
+        for (int channel = 0; channel < channelCount; ++channel)
+        {
+            channels[channel] = output[channel].data();
+
+            for (float& sample : output[channel])
+                sample = functions::UNTOUCHED_SAMPLE;
+        }
+
+        state.playing.store(true);
+
+        const AudioProcessResult result = processor.processBlock({channels, 4});
+
+        REQUIRE(result.playing);
+        REQUIRE(result.underrun);
+        REQUIRE(state.nextUnconsumedFrame.load() == 4);
+
+        for (int channel = 0; channel < channelCount; ++channel)
+        {
+            for (float sample : output[channel])
+                REQUIRE(sample == 0.0f);
+        }
     }
 } // namespace anasa

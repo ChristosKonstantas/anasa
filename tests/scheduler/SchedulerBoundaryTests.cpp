@@ -30,7 +30,7 @@ namespace anasa
 
         SharedState state;
         VersionTable versions(1);
-        SpscQueue<AudioBlock> queue(64);
+        SpscQueue<AudioBlock> queue(64, 1, audioSettings.audioBlockFrames);
         SyntheticRenderKernel kernel(48000, 0);
         Renderer renderer(kernel, versions);
         Executor executor(ExecutorSettings{}, renderer);
@@ -63,7 +63,7 @@ namespace anasa
 
         SharedState state;
         VersionTable versions(2);
-        SpscQueue<AudioBlock> audioQueue(64);
+        SpscQueue<AudioBlock> audioQueue(64, audioSettings.channelCount, audioSettings.audioBlockFrames);
         SyntheticRenderKernel kernel(audioSettings.sampleRate, renderSettings.workIterations);
         Renderer renderer(kernel, versions);
         Executor executor(ExecutorSettings{}, renderer);

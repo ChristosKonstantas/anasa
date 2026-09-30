@@ -8,11 +8,7 @@ namespace anasa
 {
     struct AudioBlock
     {
-        AudioBlock()
-            : AudioBlock(1, MAX_AUDIO_BLOCK_FRAMES)
-        {}
-
-        AudioBlock(int channelCount, int frameCapacity)
+        explicit AudioBlock(int channelCount, int frameCapacity)
             : samples(channelCount, frameCapacity)
         {}
 

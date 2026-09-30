@@ -16,7 +16,7 @@ class SpscQueue : private Alloc // Empty Base Optimization
     static_assert(std::atomic<std::size_t>::is_always_lock_free, "SpscQueue requires lock-free size_t atomics");
     
     public:
-        explicit SpscQueue(std::size_t capacity, Alloc const& alloc = Alloc{})
+        explicit SpscQueue(std::size_t capacity, const T& initialValue, Alloc const& alloc = Alloc{})
             : Alloc{alloc}, 
               _capacity(capacity),
               _data{std::allocator_traits<Alloc>::allocate(*this, _capacity)}
@@ -30,7 +30,7 @@ class SpscQueue : private Alloc // Empty Base Optimization
             try
             {
                 for (; constructed < _capacity; ++constructed)
-                    std::allocator_traits<Alloc>::construct(*this, &_data[constructed]);
+                    std::allocator_traits<Alloc>::construct(*this, &_data[constructed], initialValue);
             }
             catch (...)
             {

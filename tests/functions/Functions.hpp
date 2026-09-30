@@ -168,8 +168,9 @@ namespace anasa::functions
             block.firstFrame = firstFrame;
             block.frameCount = frameCount;
 
-            for (int frame = 0; frame < frameCount; ++frame)
-                block.samples[0][frame] = sample;
+            for (int channel = 0; channel < block.samples.channelCount(); ++channel)
+                for (int frame = 0; frame < frameCount; ++frame)
+                    block.samples[channel][frame] = sample;
         });
     }
 

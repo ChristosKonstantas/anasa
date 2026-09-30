@@ -2,7 +2,6 @@
 #include "playback/PlaybackTimeline.hpp"
 
 #include <algorithm>
-#include <cassert>
 #include <stdexcept>
 
 namespace anasa
@@ -26,10 +25,11 @@ namespace anasa
 
     AudioProcessResult AudioBlockProcessor::processBlock(AudioOutputBuffer output) noexcept    
     {
-        if (output.frameCount == 0)
+        if (output.frameCount <= 0)
             return {};
 
-        assert(output.frameCount == _blockFrames);
+        if (output.frameCount == 0)
+            return {};
 
         bool hasOutput = false;
 
@@ -42,7 +42,7 @@ namespace anasa
             hasOutput = true;
         }
 
-        if (!hasOutput)
+        if (!hasOutput || output.frameCount != _blockFrames)
             return {};
 
         if (_sharedState.stop.load(std::memory_order_acquire))
@@ -86,17 +86,23 @@ namespace anasa
             head != nullptr &&
             head->generation == globalGeneration &&
             head->firstFrame == _audioState.expectedBlockStartFrame &&
-            head->frameCount == _blockFrames;
+            head->frameCount == _blockFrames &&
+            head->samples.frameCount() >= _blockFrames &&
+            static_cast<std::size_t>(head->samples.channelCount()) == output.channels.size();
 
         if (isExactBlock)
         {
-            for (float* channel : output.channels)
+            for (std::size_t channel = 0; channel < output.channels.size(); ++channel)
             {
-                if (channel == nullptr)
+                float* destination = output.channels[channel];
+
+                if (destination == nullptr)
                     continue;
 
+                const auto source = head->samples[static_cast<int>(channel)];
+
                 for (int frame = 0; frame < _blockFrames; ++frame)
-                    channel[frame] = head->samples[0][frame];
+                    destination[frame] = source[frame];
             }
 
             // Copy before releasing the slot to the producer. pop() does not destroy it.
