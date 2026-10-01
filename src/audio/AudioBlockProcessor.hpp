@@ -15,7 +15,8 @@ namespace anasa
         AudioBlockProcessor(int blockFrames, SharedState& sharedState, SpscQueue<AudioBlock>& readyAudioQueue);
 
         int blockFrames() const noexcept override;
-        // Current source policy: copy the mono signal to every enabled output channel.
+        // Copy channel n to output n. Source and output channel counts must match.
+        // Positive mismatched callback sizes produce silence without consuming or advancing.
         AudioProcessResult processBlock(AudioOutputBuffer output) noexcept override;
 
     private:

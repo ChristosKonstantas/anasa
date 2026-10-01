@@ -48,16 +48,17 @@ namespace anasa::functions
         return settings;
     }
 
-    inline std::shared_ptr<RenderJob> makeTestRenderJob(VersionTable& versions, int chunk)
+    inline std::shared_ptr<RenderJob> makeTestRenderJob(VersionTable& versions, int chunk, int channelCount = 1)
     {
-        std::shared_ptr<RenderJob> job = std::make_shared<RenderJob>();
+        std::shared_ptr<RenderJob> job = std::make_shared<RenderJob>(channelCount);
 
         job->chunk = chunk;
         job->version = versions.get(chunk);
         job->tilesRemaining.store(TILES_PER_CHUNK, std::memory_order_release);
         job->cancelled.store(false, std::memory_order_release);
 
-        std::fill(job->samples.begin(), job->samples.end(), UNTOUCHED_SAMPLE);
+        for (int channel = 0; channel < job->samples.channelCount(); ++channel)
+            std::fill(job->samples[channel].begin(), job->samples[channel].end(), UNTOUCHED_SAMPLE);
 
         return job;
     }
@@ -67,7 +68,8 @@ namespace anasa::functions
         job.chunk = chunk;
         job.version = versions.get(chunk);
         job.cancelled.store(false, std::memory_order_release);
-        job.samples.fill(UNTOUCHED_SAMPLE);
+        for (int channel = 0; channel < job.samples.channelCount(); ++channel)
+            std::fill(job.samples[channel].begin(), job.samples[channel].end(), UNTOUCHED_SAMPLE);
     }
 
     inline bool waitForCompletedJob(IRenderExecutor& executor, std::shared_ptr<RenderJob>& completedJob, std::chrono::milliseconds timeout = 2000ms)
@@ -166,8 +168,9 @@ namespace anasa::functions
             block.firstFrame = firstFrame;
             block.frameCount = frameCount;
 
-            for (int frame = 0; frame < frameCount; ++frame)
-                block.samples[frame] = sample;
+            for (int channel = 0; channel < block.samples.channelCount(); ++channel)
+                for (int frame = 0; frame < frameCount; ++frame)
+                    block.samples[channel][frame] = sample;
         });
     }
 

@@ -20,6 +20,9 @@ namespace anasa
         if (job.chunk < 0 || job.chunk >= _versionTable.count())
             throw std::out_of_range("chunk index is outside the timeline");
 
+        if (job.samples.channelCount() <= 0 || job.samples.frameCount() != CHUNK_FRAMES)
+            throw std::invalid_argument("RenderJob storage must contain complete channels of one chunk");
+
         if (_renderCancellation.shouldCancel(job, stopRequested))
         {
             job.cancelled.store(true, std::memory_order_relaxed);
@@ -44,7 +47,8 @@ namespace anasa
             }
 
             const int globalFrame = chunkFirstFrame + frame;
-            job.samples[frame] = _kernel.renderSample(globalFrame, job.version);
+            for (int channel = 0; channel < job.samples.channelCount(); ++channel)
+                job.samples[channel][frame] = _kernel.renderSample(channel, globalFrame, job.version);
         }
 
         // Content may change after the last periodic check.

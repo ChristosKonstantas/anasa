@@ -10,7 +10,7 @@ namespace anasa
     class TestRenderKernel final : public IRenderKernel
     {
     public:
-        float renderSample(int globalFrame, int version) const override;
+        float renderSample(int channel, int globalFrame, int version) const override;
         int   callCount() const;
 
     private:

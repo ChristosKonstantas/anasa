@@ -11,7 +11,8 @@ namespace anasa
         bool underrun = false;
     };
 
-    // Processes one internal mono block. Device callback sizes are a separate concern.
+    // Processes one internal block across the enabled output channels.
+    // Device callback sizes are a separate concern.
     class IAudioBlockProcessor
     {
     public:

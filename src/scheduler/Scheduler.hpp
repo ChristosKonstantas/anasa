@@ -79,6 +79,7 @@ namespace anasa
 
         const SchedulerSettings                      _settings;
         const int                                    _audioBlockFrames;
+        const int                                    _channelCount;
         const int                                    _contextFrames;
         const int                                    _totalFrames;
         const int                                    _chunkCount;

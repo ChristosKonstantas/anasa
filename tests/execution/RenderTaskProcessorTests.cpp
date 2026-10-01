@@ -4,6 +4,7 @@
 #include <thread>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include "execution/RenderTaskProcessor.hpp"
 #include "functions/Functions.hpp"
@@ -13,6 +14,7 @@ namespace anasa
 {
     TEST_CASE("RenderTaskProcessor: accounts for every tile across rendering outcomes")
     {
+        const int channelCount = GENERATE(1, 2, 6, 16);
         RenderOutcome outcome = RenderOutcome::Complete;
         std::atomic<bool> stopRequested{false};
         bool alreadyCancelled = false;
@@ -26,7 +28,7 @@ namespace anasa
         TestTileRenderer renderer(outcome);
         RenderTaskProcessor processor(renderer);
         VersionTable versions(1);
-        std::shared_ptr<RenderJob> job = functions::makeTestRenderJob(versions, 0);
+        std::shared_ptr<RenderJob> job = functions::makeTestRenderJob(versions, 0, channelCount);
         job->cancelled.store(alreadyCancelled, std::memory_order_relaxed);
 
         const bool expectedCancellation = outcome != RenderOutcome::Complete || stopRequested.load(std::memory_order_acquire) || alreadyCancelled;
@@ -45,26 +47,30 @@ namespace anasa
         REQUIRE(job->chunk == 0);
         REQUIRE(job->version == 1);
 
-        for (int frame = 0; frame < CHUNK_FRAMES; ++frame)
+        for (int channel = 0; channel < channelCount; ++channel)
         {
-            CAPTURE(frame);
-            const float expected = expectedCancellation ? functions::UNTOUCHED_SAMPLE : TestTileRenderer::sampleForTile(frame / TILE_FRAMES);
-            REQUIRE(job->samples[frame] == expected);
+            for (int frame = 0; frame < CHUNK_FRAMES; ++frame)
+            {
+                CAPTURE(channel, frame);
+                const float expected = expectedCancellation ? functions::UNTOUCHED_SAMPLE : TestTileRenderer::sampleForTile(frame / TILE_FRAMES, channel);
+                REQUIRE(job->samples[channel][frame] == expected);
+            }
         }
     }
 
     TEST_CASE("RenderTaskProcessor: concurrent tiles report one completion with all samples visible")
     {
+        const int channelCount = GENERATE(1, 2, 6, 16);
         TestTileRenderer renderer(RenderOutcome::Complete);
         RenderTaskProcessor processor(renderer);
         VersionTable versions(1);
-        std::shared_ptr<RenderJob> job = functions::makeTestRenderJob(versions, 0);
+        std::shared_ptr<RenderJob> job = functions::makeTestRenderJob(versions, 0, channelCount);
         std::atomic<bool> stopRequested{false};
         std::atomic<int> readyWorkers{0};
         std::atomic<bool> startProcessing{false};
         std::array<std::thread, TILES_PER_CHUNK> workers;
         std::array<bool, TILES_PER_CHUNK> completed{};
-        std::array<float, CHUNK_FRAMES> completedSamples{};
+        AudioBuffer completedSamples(channelCount, CHUNK_FRAMES);
 
         for (int tile = 0; tile < TILES_PER_CHUNK; ++tile)
         {
@@ -105,10 +111,13 @@ namespace anasa
         REQUIRE(job->tilesRemaining.load(std::memory_order_acquire) == 0);
         REQUIRE_FALSE(job->cancelled.load(std::memory_order_relaxed));
 
-        for (int frame = 0; frame < CHUNK_FRAMES; ++frame)
+        for (int channel = 0; channel < channelCount; ++channel)
         {
-            CAPTURE(frame);
-            REQUIRE(completedSamples[frame] == TestTileRenderer::sampleForTile(frame / TILE_FRAMES));
+            for (int frame = 0; frame < CHUNK_FRAMES; ++frame)
+            {
+                CAPTURE(channel, frame);
+                REQUIRE(completedSamples[channel][frame] == TestTileRenderer::sampleForTile(frame / TILE_FRAMES, channel));
+            }
         }
     }
 } // namespace anasa

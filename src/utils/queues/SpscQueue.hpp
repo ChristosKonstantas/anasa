@@ -6,6 +6,7 @@
 #include <new>
 #include <utility>
 #include <stdexcept>
+#include <concepts>
 
 namespace anasa
 {
@@ -25,22 +26,30 @@ class SpscQueue : private Alloc // Empty Base Optimization
     static_assert(std::atomic<std::size_t>::is_always_lock_free, "SpscQueue requires lock-free size_t atomics");
     
     public:
-        explicit SpscQueue(std::size_t capacity, Alloc const& alloc = Alloc{})
-            : Alloc{alloc}, 
+        // Construct every slot from the same arguments before concurrent use.
+        template <typename... Args>
+        requires std::constructible_from<T, const Args&...>
+        explicit SpscQueue(std::size_t capacity, const Args&... args)
+            : SpscQueue(std::allocator_arg, Alloc{}, capacity, args...)
+        {}
+
+        template <typename... Args>
+        SpscQueue(std::allocator_arg_t, Alloc const& alloc, std::size_t capacity, const Args&... args)
+            : Alloc{alloc},
               _capacity(validateCapacity(capacity)),
               _powerOfTwo(isPowerOfTwo(_capacity)),
               _mask(_capacity - 1),
               _data{std::allocator_traits<Alloc>::allocate(*this, _capacity)}
         {
-
             /* Preconstruct all queue slots */
             /* If construction fails, destroy completed objects and release the allocated storage. */
 
             std::size_t constructed = 0;
+
             try
             {
                 for (; constructed < _capacity; ++constructed)
-                    std::allocator_traits<Alloc>::construct(*this, &_data[constructed]);
+                    std::allocator_traits<Alloc>::construct(*this, &_data[constructed], args...);
             }
             catch (...)
             {

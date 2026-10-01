@@ -7,6 +7,7 @@
 #include <thread>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include "execution/Executor.hpp"
 #include "execution/IRenderExecutor.hpp"
@@ -18,6 +19,7 @@ namespace anasa
 
     TEST_CASE("Executor contract: interface preserves output cancellation and failure")
     {
+        const int channelCount = GENERATE(1, 2, 6, 16);
         RenderOutcome outcome = RenderOutcome::Complete;
 
         SECTION("successful tiles supply their own samples") {}
@@ -34,10 +36,11 @@ namespace anasa
         REQUIRE(renderExecutor.workerCount() == settings.workerCount);
         REQUIRE(renderExecutor.queuedTaskCount() == 0);
 
-        std::shared_ptr<RenderJob> job = std::make_shared<RenderJob>();
+        std::shared_ptr<RenderJob> job = std::make_shared<RenderJob>(channelCount);
         job->chunk = 0;
         job->version = 1;
-        job->samples.fill(functions::UNTOUCHED_SAMPLE);
+        for (int channel = 0; channel < channelCount; ++channel)
+            std::fill(job->samples[channel].begin(), job->samples[channel].end(), functions::UNTOUCHED_SAMPLE);
 
         REQUIRE_FALSE(renderExecutor.submit({job, 0}));
         std::shared_ptr<RenderJob> completed = job;
@@ -64,10 +67,13 @@ namespace anasa
             CAPTURE(tile);
             REQUIRE(renderer.calls[tile].load(std::memory_order_relaxed) == 1);
 
-            const float expected = outcome == RenderOutcome::Complete ? TestTileRenderer::sampleForTile(tile) : functions::UNTOUCHED_SAMPLE;
+            for (int channel = 0; channel < channelCount; ++channel)
+            {
+                const float expected = outcome == RenderOutcome::Complete ? TestTileRenderer::sampleForTile(tile, channel) : functions::UNTOUCHED_SAMPLE;
 
-            for (int frame = tile * TILE_FRAMES; frame < (tile + 1) * TILE_FRAMES; ++frame)
-                REQUIRE(job->samples[frame] == expected);
+                for (int frame = tile * TILE_FRAMES; frame < (tile + 1) * TILE_FRAMES; ++frame)
+                    REQUIRE(job->samples[channel][frame] == expected);
+            }
         }
 
         std::shared_ptr<RenderJob> duplicate;

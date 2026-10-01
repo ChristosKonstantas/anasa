@@ -24,14 +24,13 @@ namespace anasa
 
         if (_settings.audioBlockFrames != _processor.blockFrames())
             throw std::invalid_argument("Simulator and processor block sizes must match");
-        
+
         // Allocate output storage before the audio thread starts.
-        _output.resize(static_cast<std::size_t>(_settings.channelCount));
+        _output = AudioBuffer(_settings.channelCount, _settings.audioBlockFrames);
         _outputChannels.resize(static_cast<std::size_t>(_settings.channelCount));
 
         for (int channel = 0; channel < _settings.channelCount; ++channel)
         {
-            _output[channel].resize(static_cast<std::size_t>(_settings.audioBlockFrames));
             _outputChannels[channel] = _output[channel].data();
         }
     }
@@ -150,9 +149,9 @@ namespace anasa
         if (result.underrun)
             ++_underruns;
 
-        for (const std::vector<float>& channel : _output)
+        for (int channel = 0; channel < _output.channelCount(); ++channel)
         {
-            for (const float sample : channel)
+            for (const float sample : _output[channel])
                 _checksum += static_cast<double>(sample) * sample;
         }
     }

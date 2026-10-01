@@ -14,9 +14,10 @@ namespace anasa
         IRenderKernel& operator=(IRenderKernel&&) = delete;
 
         // globalFrame is an absolute timeline frame & version identifies the requested content.
+        // channel is a non-negative, zero-based channel index.
         // Calls are synchronous and may run concurrently on the same kernel.
         // Implementations must protect shared mutable state. Failures may throw.
-        virtual float renderSample(int globalFrame, int version) const = 0;
+        virtual float renderSample(int channel, int globalFrame, int version) const = 0;
 
     protected:
         IRenderKernel() = default;

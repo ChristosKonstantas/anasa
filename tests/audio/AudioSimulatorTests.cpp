@@ -54,7 +54,7 @@ namespace anasa
 
         SharedState sharedState;
 
-        SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS);
+        SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS, settings.channelCount, settings.audioBlockFrames);
         
         AudioBlockProcessor processor(settings.audioBlockFrames, sharedState, readyAudioQueue);
         AudioSimulator simulator(settings, sharedState.stop, processor);
@@ -79,7 +79,7 @@ namespace anasa
 
         SharedState sharedState;
 
-        SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS);
+        SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS, settings.channelCount, settings.audioBlockFrames);
 
         sharedState.playing.store(true, std::memory_order_release);
 
@@ -106,10 +106,10 @@ namespace anasa
     TEST_CASE("AudioSimulator: consumes ready audio blocks without underrun")
     {
         AudioSettings settings = makeTestAudioSettings();
-
+        settings.channelCount = GENERATE(1, 2, 6, 16);
         SharedState sharedState;
 
-        SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS);
+        SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS, settings.channelCount, settings.audioBlockFrames);
 
         constexpr int bufferedBlocks = 32;
 
@@ -135,7 +135,7 @@ namespace anasa
         REQUIRE(simulator.getUnderrunsCount() == 0);
 
         // Non-zero samples must have been consumed.
-        REQUIRE(simulator.getChecksum() > 0.0);
+        REQUIRE(simulator.getChecksum() == simulator.getCallbacksCount() * settings.audioBlockFrames * settings.channelCount * 0.25);
     }
 
 
@@ -145,7 +145,7 @@ namespace anasa
 
         SharedState sharedState;
 
-        SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS);
+        SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS, settings.channelCount, settings.audioBlockFrames);
 
         constexpr int bufferedBlocks = 32;
 
@@ -178,7 +178,7 @@ namespace anasa
 
         SharedState sharedState;
 
-        SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS);
+        SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS, settings.channelCount, settings.audioBlockFrames);
 
         AudioBlockProcessor processor(settings.audioBlockFrames, sharedState, readyAudioQueue);
         AudioSimulator simulator(settings, sharedState.stop, processor);

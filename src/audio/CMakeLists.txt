@@ -1,4 +1,11 @@
 anasa_add_module(
+    audio-buffer
+    SOURCES
+        AudioBuffer.hpp
+        AudioBuffer.cpp
+)
+
+anasa_add_module(
     audio-contracts
     HEADER_ONLY
     SOURCES
@@ -15,7 +22,7 @@ anasa_add_module(
         AudioBlockProcessor.hpp
         AudioBlockProcessor.cpp
 )
-
+target_link_libraries(audio-contracts INTERFACE audio-buffer)
 target_link_libraries(audio-processing PUBLIC audio-contracts queues playback)
 
 anasa_add_module(
@@ -25,4 +32,4 @@ anasa_add_module(
         simulator/AudioSimulator.cpp
 )
 
-target_link_libraries(audio-simulator PUBLIC audio-contracts)
+target_link_libraries(audio-simulator PUBLIC audio-contracts audio-buffer)
