@@ -341,12 +341,15 @@ namespace anasa
                 activeJob.reset();
                 continue;
             }
-            CacheEntry &cacheForCurrentChunk = _cache[chunk];
+            CacheEntry& cacheForCurrentChunk = _cache[chunk];
+
             for (int channel = 0; channel < _channelCount; ++channel)
             {
-                const std::span<float>& jobChannel = job->samples[channel];
+                const auto source = job->samples[channel];
+                const auto destination = cacheForCurrentChunk.samples[channel];
+
                 for (int sample = 0; sample < job->samples.frameCount(); ++sample)
-                    cacheForCurrentChunk.samples[channel][sample] = jobChannel[sample];
+                    destination[sample] = source[sample];
             }
 
             _cache[chunk].version = job->version;
@@ -399,12 +402,16 @@ namespace anasa
                 block.frameCount = _audioBlockFrames;
 
                 const CacheEntry& cacheForCurrentChunk = _cache[chunk];
+
                 for (int channel = 0; channel < _channelCount; ++channel)
                 {
-                    const auto cacheChannelSamples = cacheForCurrentChunk.samples[channel];
+                    const auto source = cacheForCurrentChunk.samples[channel];
+                    const auto destination = block.samples[channel];
+
                     for (int frame = 0; frame < _audioBlockFrames; ++frame)
-                        block.samples[channel][frame] = cacheChannelSamples[chunkOffset + frame];
+                        destination[frame] = source[chunkOffset + frame];
                 }
+                
             });
 
             if (!pushed)

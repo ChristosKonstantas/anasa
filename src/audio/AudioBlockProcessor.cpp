@@ -28,9 +28,6 @@ namespace anasa
         if (output.frameCount <= 0)
             return {};
 
-        if (output.frameCount == 0)
-            return {};
-
         bool hasOutput = false;
 
         for (float* channel : output.channels)
