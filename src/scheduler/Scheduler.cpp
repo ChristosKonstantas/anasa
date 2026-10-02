@@ -10,7 +10,6 @@
 #include <utility>
 #include <vector>
 
-#include "audio/AudioConstants.hpp"
 #include "playback/PlaybackTimeline.hpp"
 #include "render/RenderConstants.hpp"
 #include "render/RenderFrameUtils.hpp"
@@ -30,7 +29,7 @@ namespace anasa
           _playbackController(schedulerSettings.prebufferBlocks, schedulerSettings.rebufferOnEdit, sharedState.playing),
           _versionTable(versionTable),
           _executor(executor),
-          _readyAudioQueue(readyAudioQueue),
+          _audioPublisher(_audioBlockFrames, _channelCount, _totalFrames, readyAudioQueue),
           _commandQueue(validateCommandQueueSlots(schedulerSettings.commandQueueSlots)),
           _pendingTiles(SchedulingPolicyCompare(createSchedulingPolicy(schedulerSettings.policyType)), makeReservedTileStorage(_settings.maxPendingTiles)),
           _reclassificationBuffer(makeReservedTileStorage(_settings.maxPendingTiles)),
@@ -42,7 +41,6 @@ namespace anasa
           _viewportFirstFrame(0),
           _viewportLastFrame(0),
           _lastClassifiedPlayheadChunk(-1),
-          _nextFrameToPublish(0),
           _timelineScanCursorInChunks(0),
           _nextTileSequence(0)
     {
@@ -50,23 +48,8 @@ namespace anasa
         if (audioSettings.sampleRate <= 0)
             throw std::invalid_argument("sampleRate must be greater than zero");
 
-        if (_channelCount <= 0)
-            throw std::invalid_argument("channelCount must be greater than zero");
-
-        if (_audioBlockFrames <= 0)
-            throw std::invalid_argument("audioBlockFrames must be greater than zero");
-
-        if (_audioBlockFrames > MAX_AUDIO_BLOCK_FRAMES)
-            throw std::invalid_argument("audioBlockFrames exceeds MAX_AUDIO_BLOCK_FRAMES");
-
-        if (CHUNK_FRAMES % _audioBlockFrames != 0)
-            throw std::invalid_argument("audioBlockFrames must divide CHUNK_FRAMES");
-
         if (_contextFrames < 0)
             throw std::invalid_argument("contextFrames must not be negative");
-
-        if (_totalFrames % _audioBlockFrames != 0)
-            throw std::invalid_argument("totalFrames must be divisible by audioBlockFrames - current engine does not support a partial final audio block");
 
         if (_settings.lowWaterBlocks < 0)
             throw std::invalid_argument("lowWaterBlocks must not be negative");
@@ -86,7 +69,7 @@ namespace anasa
         if (_settings.urgentReservedTiles < 0 || _settings.urgentReservedTiles > _settings.maxPendingTiles)
             throw std::invalid_argument("urgentReservedTiles must be between zero and maxPendingTiles");
         
-        const int readyQueueCapacity = static_cast<int>(_readyAudioQueue.capacity());
+        const int readyQueueCapacity = static_cast<int>(readyAudioQueue.capacity());
 
         if (_settings.prebufferBlocks > readyQueueCapacity)
             throw std::invalid_argument("prebufferBlocks exceeds ready-audio queue capacity");
@@ -143,10 +126,8 @@ namespace anasa
         _backgroundAllowed = true;
         _pendingClassificationsDirty = true;
         _lastClassifiedPlayheadChunk = -1;
-        _nextFrameToPublish = _playbackProtocol.currentFrame();
-
-        assert(_nextFrameToPublish % _audioBlockFrames == 0 || _nextFrameToPublish == _totalFrames);
-
+        _audioPublisher.reset(_playbackProtocol.currentFrame());
+        
         _started = true;
 
         try
@@ -364,7 +345,7 @@ namespace anasa
 
         if (nextUnconsumedFrame >= _totalFrames)
         {
-            _nextFrameToPublish = _totalFrames;
+            _audioPublisher.reset(_totalFrames);
 
             if (_playbackController.pause())
                 _pendingClassificationsDirty = true;
@@ -372,55 +353,10 @@ namespace anasa
             return;
         }
 
-        // If playback already passed unpublished audio, late audio is useless.
-        if (_nextFrameToPublish < nextUnconsumedFrame)
-            _nextFrameToPublish = nextUnconsumedFrame;
-
         const int generation = _sharedState.generation.load(std::memory_order_acquire);
+        _audioPublisher.publish(nextUnconsumedFrame, generation, _cache, _versionTable);
 
-        while (_nextFrameToPublish <= _totalFrames - _audioBlockFrames)
-        {
-            const int chunk = frameToChunk(_nextFrameToPublish);
-
-            // Publication is strictly ordered. Never skip a missing chunk. Postpone publication until the required chunk becomes available.
-            if (!cacheIsCurrent(chunk))
-                break;
-
-            const int blockFirstFrame = _nextFrameToPublish; // remember it's aligned to first frame of the audio block (see Seek)
-            const int chunkOffset = _nextFrameToPublish - firstFrameOfChunk(chunk); // locate the block's first frame within the chunk
-
-            assert(chunkOffset >= 0);
-            assert(chunkOffset + _audioBlockFrames <= CHUNK_FRAMES);
-
-            const bool pushed = _readyAudioQueue.pushWith([this, generation, blockFirstFrame, chunk, chunkOffset](AudioBlock& block)
-            {
-                assert(block.samples.channelCount() == _channelCount);
-                assert(block.samples.frameCount() >= _audioBlockFrames);
-
-                block.generation = generation;
-                block.firstFrame = blockFirstFrame;
-                block.frameCount = _audioBlockFrames;
-
-                const CacheEntry& cacheForCurrentChunk = _cache[chunk];
-
-                for (int channel = 0; channel < _channelCount; ++channel)
-                {
-                    const auto source = cacheForCurrentChunk.samples[channel];
-                    const auto destination = block.samples[channel];
-
-                    for (int frame = 0; frame < _audioBlockFrames; ++frame)
-                        destination[frame] = source[chunkOffset + frame];
-                }
-                
-            });
-
-            if (!pushed)
-                break;
-
-            _nextFrameToPublish += _audioBlockFrames;
-        }
-
-        _playbackController.startIfReady(readyLeadBlocks(), _nextFrameToPublish >= _totalFrames);
+        _playbackController.startIfReady(readyLeadBlocks(), _audioPublisher.entireRemainderPublished());
     }
 
     void Scheduler::updateBackgroundAdmission()
@@ -645,7 +581,7 @@ namespace anasa
         assert(targetFrame % _audioBlockFrames == 0 || targetFrame == _totalFrames);
 
         _playbackProtocol.beginGeneration(targetFrame, suspendPlayback);
-        _nextFrameToPublish = targetFrame;
+        _audioPublisher.reset(targetFrame);
     }
 
     void Scheduler::invalidateVersions(int firstFrame, int lastFrame)
@@ -675,11 +611,7 @@ namespace anasa
 
     int Scheduler::readyLeadBlocks() const
     {
-        const int nextUnconsumedFrame = _playbackProtocol.currentFrame();
-
-        const int readyFrames = std::max(0, _nextFrameToPublish - nextUnconsumedFrame);
-
-        return readyFrames / _audioBlockFrames;
+        return _audioPublisher.readyLeadBlocks(_playbackProtocol.currentFrame());
     }
 
     bool Scheduler::chunkIntersectsViewport(int chunk) const

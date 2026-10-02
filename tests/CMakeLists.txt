@@ -23,6 +23,7 @@ if(BUILD_TESTS)
         scheduler/SchedulingPolicyTests.cpp
         scheduler/SchedulerIntegrationTests.cpp
         scheduler/SchedulerBoundaryTests.cpp
+        scheduler/TimelineAudioPublisherTests.cpp
         engine/EngineTests.cpp
     )
 

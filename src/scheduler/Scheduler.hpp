@@ -21,6 +21,7 @@
 #include "utils/queues/SpscQueue.hpp"
 #include "playback/PlaybackProtocol.hpp"
 #include "playback/PlaybackController.hpp"
+#include "scheduler/TimelineAudioPublisher.hpp"
 
 namespace anasa
 {
@@ -89,8 +90,7 @@ namespace anasa
         PlaybackController                           _playbackController;
         VersionTable&                                _versionTable;
         IRenderExecutor&                             _executor;
-        SpscQueue<AudioBlock>&                       _readyAudioQueue;
-             
+        TimelineAudioPublisher                       _audioPublisher;             
         SpscQueue<Command>                           _commandQueue;
 
         std::priority_queue<     
@@ -112,7 +112,6 @@ namespace anasa
         int                                          _viewportFirstFrame;
         int                                          _viewportLastFrame;
         int                                          _lastClassifiedPlayheadChunk;
-        int                                          _nextFrameToPublish;
         int                                          _timelineScanCursorInChunks;
              
         long long                                    _nextTileSequence;        
