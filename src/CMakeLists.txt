@@ -1,6 +1,6 @@
 add_subdirectory(utils)
 add_subdirectory(playback)
-add_subdirectory(audio-pipeline)
+add_subdirectory(audio)
 add_subdirectory(render)
 add_subdirectory(execution)
 add_subdirectory(scheduler)

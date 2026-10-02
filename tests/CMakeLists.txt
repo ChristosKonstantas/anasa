@@ -5,11 +5,25 @@ if(BUILD_TESTS)
         functions/Functions.hpp
         benchmarks/Benchmark.hpp
         utils/queues/SpscQueueTests.cpp
-        audio-pipeline/AudioSimulatorTests.cpp
+        utils/queues/TestQueuePayload.cpp
+        render/TestVersionReader.cpp
+        render/TestRenderKernel.cpp
         render/RenderTests.cpp
+        render/SyntheticRenderKernelTests.cpp
+        render/RenderCancellationTests.cpp
+        execution/TestTileRenderer.cpp
+        execution/RenderTaskProcessorTests.cpp
+        execution/ExecutorContractTests.cpp
         execution/ExecutorTests.cpp
+        audio/AudioSimulatorTests.cpp
+        audio/AudioBlockProcessorTests.cpp
+        audio/AudioBufferTests.cpp
+        playback/PlaybackProtocolTests.cpp
+        playback/PlaybackControllerTests.cpp
         scheduler/SchedulingPolicyTests.cpp
         scheduler/SchedulerIntegrationTests.cpp
+        scheduler/SchedulerBoundaryTests.cpp
+        engine/EngineTests.cpp
     )
 
     add_executable(tests ${TEST_SOURCES})
@@ -28,11 +42,14 @@ if(BUILD_TESTS)
                           Catch2::Catch2WithMain
                           funcs
                           queues
-                          audio-pipeline
+                          audio-buffer
+                          audio-processing 
+                          audio-simulator
                           playback
                           renderer
                           executor
                           scheduler
+                          engine
     )
 
     source_group(

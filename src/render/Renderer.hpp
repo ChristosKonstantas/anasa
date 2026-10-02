@@ -3,38 +3,28 @@
 
 #include <atomic>
 
-#include "render/RenderSettings.hpp"
+#include "render/IChunkVersionReader.hpp"
+#include "render/ITileRenderer.hpp"
+#include "render/RenderCancellation.hpp"
 #include "render/RenderTypes.hpp"
-#include "render/VersionTable.hpp"
+#include "render/kernels/IRenderKernel.hpp"
 
 namespace anasa
 {
+    class Renderer final : public ITileRenderer
+    {
+    public:
+        // The kernel and version reader must outlive this renderer and all calls to renderTile().
+        Renderer(const IRenderKernel& kernel, const IChunkVersionReader& versionTable);
 
-class Renderer
-{
-public:
-    Renderer(int sampleRate, const RenderSettings& renderSettings, VersionTable& versionTable);
+        // Validates and renders one tile with periodic cancellation checks.
+        bool renderTile(RenderJob& job, int tileIndex, const std::atomic<bool>& stopRequested) const override;
 
-    /* ----> renderTile(...)
-    * Synchronously renders one tile and writes it into the corresponding range of job.samples.
-    *
-    * The harmonic oscillator generates deterministic synthetic audio.
-    * The configurable nonlinear loop adds synthetic serialized CPU load
-    * It is not a sophisticated DSP or neural-inference algorithm.
-    *
-    * Returns false when shutdown, explicit cancellation, or version invalidation is detected.
-    */
-    bool          renderTile(RenderJob& job, int tileIndex, const std::atomic<bool>& stopRequested) const;
-
-private:
-    bool          shouldCancel(const RenderJob& job, const std::atomic<bool>& stopRequested) const;
-
-    int           _sampleRate;
-    int           _workIterations;
-
-    VersionTable& _versionTable;
-};
-
+    private:
+        const IRenderKernel&       _kernel;
+        const IChunkVersionReader& _versionTable;
+        RenderCancellation         _renderCancellation;
+    };
 } // namespace anasa
 
 #endif // RENDERER_HPP

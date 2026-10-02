@@ -1,3 +1,6 @@
+#include <limits>
+#include <stdexcept>
+
 #include "Engine.hpp"
 
 namespace anasa
@@ -5,15 +8,17 @@ namespace anasa
 
     Engine::Engine(EngineSettings settings)
         :_settings(settings),
-         _totalFrames(_settings.timelineInSeconds * _settings.audio.sampleRate),
-         _chunkCount((_totalFrames + CHUNK_FRAMES - 1) / CHUNK_FRAMES), // (ceil(_totalFrames/CHUNK_FRAMES))
+         _totalFrames(calculateTotalFrames(_settings)),
+         _chunkCount(1 + (_totalFrames - 1) / CHUNK_FRAMES), // (ceil(_totalFrames/CHUNK_FRAMES))
          _versionTable(_chunkCount),
          _sharedState(),
-         _readyAudioQueue(READY_AUDIO_QUEUE_SLOTS),
-         _renderer(_settings.audio.sampleRate, _settings.render, _versionTable),
+         _readyAudioQueue(READY_AUDIO_QUEUE_SLOTS, _settings.audio.channelCount, _settings.audio.audioBlockFrames),
+         _renderKernel(_settings.audio.sampleRate, _settings.render.workIterations),
+         _renderer(_renderKernel, _versionTable),
          _executor(_settings.executor, _renderer),
          _scheduler(_settings.scheduler, _settings.audio, _settings.render, _totalFrames, _sharedState, _versionTable, _executor, _readyAudioQueue),
-         _audioSimulator(_settings.audio, _sharedState, _readyAudioQueue),
+         _audioBlockProcessor(_settings.audio.audioBlockFrames, _sharedState, _readyAudioQueue),
+         _audioSimulator(_settings.audio, _sharedState.stop, _audioBlockProcessor),
          _started(false)
     {
     }
@@ -80,6 +85,51 @@ namespace anasa
     bool Engine::post(Command command)
     {
         return _scheduler.post(command);
+    }
+
+    PlaybackSnapshot Engine::playbackSnapshot() const
+    {
+        return
+        {
+            _sharedState.playing.load(std::memory_order_acquire),
+            _sharedState.generation.load(std::memory_order_acquire),
+            _sharedState.audioCursorGeneration.load(std::memory_order_acquire),
+            _sharedState.nextUnconsumedFrame.load(std::memory_order_acquire)
+        };
+    }
+
+    EngineMetrics Engine::metrics() const
+    {
+        if (_started)
+        throw std::logic_error("Engine metrics may be read only after stop()");
+
+        return
+        {
+            _audioSimulator.getCallbacksCount(),
+            _audioSimulator.getUnderrunsCount(),
+            _audioSimulator.getCallbackMaxInUs()
+        };
+    }
+
+    int Engine::calculateTotalFrames(const EngineSettings& settings)
+    {
+        if (settings.timelineInSeconds <= 0)
+            throw std::invalid_argument("timelineInSeconds must be greater than zero");
+
+        if (settings.audio.sampleRate <= 0)
+            throw std::invalid_argument("sampleRate must be greater than zero");
+        
+        // Validate dimensions before queue-slot buffers are allocated.
+        if (settings.audio.channelCount <= 0)
+            throw std::invalid_argument("channelCount must be greater than zero");
+
+        if (settings.audio.audioBlockFrames <= 0 || settings.audio.audioBlockFrames > MAX_AUDIO_BLOCK_FRAMES)
+            throw std::invalid_argument("Invalid internal audio block size");
+
+        if (settings.timelineInSeconds > std::numeric_limits<int>::max() / settings.audio.sampleRate)
+            throw std::invalid_argument("Timeline frame count exceeds the supported range");
+
+        return settings.timelineInSeconds * settings.audio.sampleRate;
     }
 
 

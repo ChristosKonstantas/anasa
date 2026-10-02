@@ -1,7 +1,11 @@
 #ifndef FUNCTIONS_HPP
 #define FUNCTIONS_HPP
 
+#include <algorithm>
 #include <chrono>
+#include <memory>
+#include <thread>
+
 #include "utils/queues/SpscQueue.hpp"
 #include "render/RenderConstants.hpp"
 #include "render/RenderSettings.hpp"
@@ -11,9 +15,9 @@
 #include "execution/ExecutorConstants.hpp"
 #include "execution/ExecutorSettings.hpp"
 #include "execution/ExecutorTypes.hpp"
-#include "execution/Executor.hpp"
+#include "execution/IRenderExecutor.hpp"
 #include "scheduler/SchedulerTypes.hpp"
-#include "audio-pipeline/AudioTypes.hpp"
+#include "audio/AudioTypes.hpp"
 
 namespace anasa::functions
 {
@@ -44,16 +48,17 @@ namespace anasa::functions
         return settings;
     }
 
-    inline std::shared_ptr<RenderJob> makeTestRenderJob(VersionTable& versions, int chunk)
+    inline std::shared_ptr<RenderJob> makeTestRenderJob(VersionTable& versions, int chunk, int channelCount = 1)
     {
-        std::shared_ptr<RenderJob> job = std::make_shared<RenderJob>();
+        std::shared_ptr<RenderJob> job = std::make_shared<RenderJob>(channelCount);
 
         job->chunk = chunk;
         job->version = versions.get(chunk);
         job->tilesRemaining.store(TILES_PER_CHUNK, std::memory_order_release);
         job->cancelled.store(false, std::memory_order_release);
 
-        std::fill(job->samples.begin(), job->samples.end(), UNTOUCHED_SAMPLE);
+        for (int channel = 0; channel < job->samples.channelCount(); ++channel)
+            std::fill(job->samples[channel].begin(), job->samples[channel].end(), UNTOUCHED_SAMPLE);
 
         return job;
     }
@@ -63,10 +68,11 @@ namespace anasa::functions
         job.chunk = chunk;
         job.version = versions.get(chunk);
         job.cancelled.store(false, std::memory_order_release);
-        job.samples.fill(UNTOUCHED_SAMPLE);
+        for (int channel = 0; channel < job.samples.channelCount(); ++channel)
+            std::fill(job.samples[channel].begin(), job.samples[channel].end(), UNTOUCHED_SAMPLE);
     }
 
-    inline bool waitForCompletedJob(Executor& executor, std::shared_ptr<RenderJob>& completedJob, std::chrono::milliseconds timeout = 2000ms)
+    inline bool waitForCompletedJob(IRenderExecutor& executor, std::shared_ptr<RenderJob>& completedJob, std::chrono::milliseconds timeout = 2000ms)
     {
         const auto deadline = std::chrono::steady_clock::now() + timeout;
 
@@ -117,8 +123,7 @@ namespace anasa::functions
         }, timeout);
     }
     
-    inline bool waitAndPopFirstBlockOfGeneration(SpscQueue<AudioBlock>& queue, int generation, BlockHeader& result, 
-                                            std::chrono::milliseconds timeout = 5000ms)
+    inline bool waitAndPopFirstBlockOfGeneration(SpscQueue<AudioBlock>& queue, int generation, BlockHeader& result, std::chrono::milliseconds timeout = 5000ms)
     {
         const auto deadline = std::chrono::steady_clock::now() + timeout;
 
@@ -148,11 +153,25 @@ namespace anasa::functions
     inline PendingRenderTile makeTile(RenderPriority priority, long long sequence, int deadlineFrame = -1, int distanceInFrames = 0)
     {
         PendingRenderTile tile;
-        tile.priority = priority;
+        tile.classification.priority = priority;
         tile.sequence = sequence;
-        tile.deadlineFrame = deadlineFrame;
-        tile.distanceInFrames = distanceInFrames;
+        tile.classification.deadlineFrame = deadlineFrame;
+        tile.classification.distanceInFrames = distanceInFrames;
         return tile;
+    }
+
+    inline bool pushTestAudioBlock(SpscQueue<AudioBlock>& queue, int generation, int firstFrame, int frameCount, float sample = 0.5f)
+    {
+        return queue.pushWith([&](AudioBlock& block)
+        {
+            block.generation = generation;
+            block.firstFrame = firstFrame;
+            block.frameCount = frameCount;
+
+            for (int channel = 0; channel < block.samples.channelCount(); ++channel)
+                for (int frame = 0; frame < frameCount; ++frame)
+                    block.samples[channel][frame] = sample;
+        });
     }
 
 } // namespace anasa::functions

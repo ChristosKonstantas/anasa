@@ -8,18 +8,19 @@
 #include <thread>
 #include <vector>
 
-#include "audio-pipeline/AudioSettings.hpp"
-#include "audio-pipeline/AudioTypes.hpp"
-#include "execution/Executor.hpp"
+#include "audio/AudioSettings.hpp"
+#include "audio/AudioTypes.hpp"
+#include "execution/IRenderExecutor.hpp"
 #include "playback/PlaybackState.hpp"
 #include "render/RenderSettings.hpp"
 #include "render/RenderTypes.hpp"
 #include "render/VersionTable.hpp"
 #include "scheduler/SchedulerSettings.hpp"
 #include "scheduler/SchedulerTypes.hpp"
-#include "scheduler/policies/ISchedulingPolicy.hpp"
 #include "scheduler/policies/SchedulingPolicyCompare.hpp"
 #include "utils/queues/SpscQueue.hpp"
+#include "playback/PlaybackProtocol.hpp"
+#include "playback/PlaybackController.hpp"
 
 namespace anasa
 {
@@ -39,7 +40,7 @@ namespace anasa
     {
     public:
         Scheduler(const SchedulerSettings& schedulerSettings, const AudioSettings& audioSettings, const RenderSettings& renderSettings, 
-                  int totalFrames, SharedState& sharedState, VersionTable& versionTable, Executor& executor, SpscQueue<AudioBlock>& readyAudioQueue);
+                  int totalFrames, SharedState& sharedState, VersionTable& versionTable, IRenderExecutor& executor, SpscQueue<AudioBlock>& readyAudioQueue);
 
         ~Scheduler();
 
@@ -53,7 +54,8 @@ namespace anasa
                             /* Main functionality */
                             
         static std::size_t                           validateCommandQueueSlots(int commandQueueSlots);
-        static std::vector<PendingRenderTile>        makePendingStorage(int capacity);
+        static std::vector<PendingRenderTile>        makeReservedTileStorage(int capacity);
+        
         void                                         schedulerLoop();
         void                                         readCommands();
         void                                         handleCommand(Command command);
@@ -67,8 +69,8 @@ namespace anasa
         void                                         dispatchPendingTiles();
         
                             /* Helpers */
-
-        int                                          currentPlaybackFrame() const;
+        bool                                         shutdownRequested() const;
+        void                                         beginAudioGeneration(int targetFrame, bool suspendPlayback);
         void                                         invalidateVersions(int firstFrame, int lastFrame);
         bool                                         cacheIsCurrent(int chunk) const;
         int                                          readyLeadBlocks() const;
@@ -77,18 +79,20 @@ namespace anasa
 
         const SchedulerSettings                      _settings;
         const int                                    _audioBlockFrames;
+        const int                                    _channelCount;
         const int                                    _contextFrames;
         const int                                    _totalFrames;
         const int                                    _chunkCount;
              
         SharedState&                                 _sharedState;
+        PlaybackProtocol                             _playbackProtocol;
+        PlaybackController                           _playbackController;
         VersionTable&                                _versionTable;
-        Executor&                                    _executor;
+        IRenderExecutor&                             _executor;
         SpscQueue<AudioBlock>&                       _readyAudioQueue;
              
         SpscQueue<Command>                           _commandQueue;
-        std::shared_ptr<const ISchedulingPolicy>     _schedulingPolicy;
-             
+
         std::priority_queue<     
             PendingRenderTile,   
             std::vector<PendingRenderTile>,  
@@ -102,7 +106,6 @@ namespace anasa
         std::atomic<bool>                            _stopRequested;
              
         bool                                         _started;
-        bool                                         _playRequested;
         bool                                         _backgroundAllowed;
         bool                                         _pendingClassificationsDirty;
              
@@ -110,7 +113,7 @@ namespace anasa
         int                                          _viewportLastFrame;
         int                                          _lastClassifiedPlayheadChunk;
         int                                          _nextFrameToPublish;
-        int                                          _timelineScanCursor;
+        int                                          _timelineScanCursorInChunks;
              
         long long                                    _nextTileSequence;        
     };

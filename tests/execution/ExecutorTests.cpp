@@ -10,7 +10,7 @@
 #include "execution/Executor.hpp"
 #include "render/Renderer.hpp"
 #include "render/VersionTable.hpp"
-
+#include "render/kernels/SyntheticRenderKernel.hpp"
 #include "functions/Functions.hpp"
 
 namespace anasa
@@ -19,7 +19,8 @@ namespace anasa
     {
         VersionTable versions(4);
         RenderSettings renderSettings = functions::makeTestRenderSettings();
-        Renderer renderer(48000, renderSettings, versions);
+        SyntheticRenderKernel kernel(48000, renderSettings.workIterations);
+        Renderer renderer(kernel, versions);
 
         SECTION("worker count must be positive")
         {
@@ -42,7 +43,8 @@ namespace anasa
     {
         VersionTable versions(4);
         RenderSettings renderSettings = functions::makeTestRenderSettings();
-        Renderer renderer(48000, renderSettings, versions);
+        SyntheticRenderKernel kernel(48000, renderSettings.workIterations);
+        Renderer renderer(kernel, versions);
         ExecutorSettings executorSettings = functions::makeTestExecutorSettings();
         Executor executor(executorSettings, renderer);
 
@@ -63,7 +65,8 @@ namespace anasa
     {
         VersionTable versions(4);
         RenderSettings renderSettings = functions::makeTestRenderSettings();
-        Renderer renderer(48000, renderSettings, versions);
+        SyntheticRenderKernel kernel(48000, renderSettings.workIterations);
+        Renderer renderer(kernel, versions);
         ExecutorSettings executorSettings = functions::makeTestExecutorSettings();
         Executor executor(executorSettings, renderer);
 
@@ -82,7 +85,8 @@ namespace anasa
     {
         VersionTable versions(4);
         RenderSettings renderSettings = functions::makeTestRenderSettings();
-        Renderer renderer(48000, renderSettings, versions);
+        SyntheticRenderKernel kernel(48000, renderSettings.workIterations);
+        Renderer renderer(kernel, versions);
         ExecutorSettings executorSettings = functions::makeTestExecutorSettings();
         Executor executor(executorSettings, renderer);
 
@@ -97,7 +101,8 @@ namespace anasa
     {
         VersionTable versions(4);
         RenderSettings renderSettings = functions::makeTestRenderSettings();
-        Renderer renderer(48000, renderSettings, versions);
+        SyntheticRenderKernel kernel(48000, renderSettings.workIterations);
+        Renderer renderer(kernel, versions);
         ExecutorSettings executorSettings = functions::makeTestExecutorSettings();
         Executor executor(executorSettings, renderer);
 
@@ -123,9 +128,9 @@ namespace anasa
         {
             CAPTURE(frame);
 
-            REQUIRE(job->samples[frame] != functions::UNTOUCHED_SAMPLE);
-            REQUIRE(std::isfinite(job->samples[frame]));
-            REQUIRE(std::abs(job->samples[frame]) <= 1.0f);
+            REQUIRE(job->samples[0][frame] != functions::UNTOUCHED_SAMPLE);
+            REQUIRE(std::isfinite(job->samples[0][frame]));
+            REQUIRE(std::abs(job->samples[0][frame]) <= 1.0f);
         }
 
         // A job must be published only once, by its final tile.
@@ -137,7 +142,8 @@ namespace anasa
     {
         VersionTable versions(4);
         RenderSettings renderSettings = functions::makeTestRenderSettings();
-        Renderer renderer(48000, renderSettings, versions);
+        SyntheticRenderKernel kernel(48000, renderSettings.workIterations);
+        Renderer renderer(kernel, versions);
         ExecutorSettings executorSettings = functions::makeTestExecutorSettings();
         Executor executor(executorSettings, renderer);
 
@@ -169,7 +175,7 @@ namespace anasa
         for (int frame = 0; frame < CHUNK_FRAMES; ++frame)
         {
             CAPTURE(frame);
-            REQUIRE(job->samples[frame] == functions::UNTOUCHED_SAMPLE);
+            REQUIRE(job->samples[0][frame] == functions::UNTOUCHED_SAMPLE);
         }
     }
 
@@ -177,7 +183,8 @@ namespace anasa
     {
         VersionTable versions(4);
         RenderSettings renderSettings = functions::makeTestRenderSettings();
-        Renderer renderer(48000, renderSettings, versions);
+        SyntheticRenderKernel kernel(48000, renderSettings.workIterations);
+        Renderer renderer(kernel, versions);
         ExecutorSettings executorSettings = functions::makeTestExecutorSettings();
         Executor executor(executorSettings, renderer);
 
@@ -205,7 +212,7 @@ namespace anasa
         for (int frame = 0; frame < CHUNK_FRAMES; ++frame)
         {
             CAPTURE(frame);
-            REQUIRE(job->samples[frame] == functions::UNTOUCHED_SAMPLE);
+            REQUIRE(job->samples[0][frame] == functions::UNTOUCHED_SAMPLE);
         }
     }
 

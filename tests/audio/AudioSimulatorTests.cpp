@@ -1,10 +1,13 @@
 #include <catch2/catch_test_macros.hpp>
-
-#include "audio-pipeline/AudioSimulator.hpp"
-#include "audio-pipeline/AudioConstants.hpp"
+#include <catch2/generators/catch_generators.hpp>
+#include "audio/simulator/AudioSimulator.hpp"
+#include "audio/AudioConstants.hpp"
 #include "utils/queues/SpscQueue.hpp"
 #include "playback/PlaybackState.hpp"
-
+#include "audio/AudioBlockProcessor.hpp"
+#include "functions/Functions.hpp"
+#include "TestAudioBlockProcessor.hpp"
+#include <stdexcept>
 #include <chrono>
 #include <thread>
 
@@ -42,37 +45,19 @@ namespace anasa
     void feedAudioQueue(SpscQueue<AudioBlock>& queue, const AudioSettings& settings, int blockCount, int generation = 1)
     {
         for (int blockIndex = 0; blockIndex < blockCount; ++blockIndex)
-        {
-            REQUIRE
-            (
-                queue.pushWith
-                (
-                    [&](AudioBlock& block)
-                    {
-                        block.generation = generation;
-
-                        block.firstFrame = blockIndex * settings.audioBlockFrames;
-
-                        block.frameCount = settings.audioBlockFrames;
-
-                        for (int i = 0; i < block.frameCount; ++i)
-                            block.samples[i] = 0.5f;
-
-                    }
-                )
-            );
-        }
+            REQUIRE(functions::pushTestAudioBlock(queue, generation, blockIndex * settings.audioBlockFrames, settings.audioBlockFrames));
     }
 
-    TEST_CASE("AudioSimulator: paused playback produces no audio callbacks")
+    TEST_CASE("AudioSimulator: paused callbacks do not advance playback")
     {
         AudioSettings settings = makeTestAudioSettings();
 
         SharedState sharedState;
 
-        SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS);
+        SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS, settings.channelCount, settings.audioBlockFrames);
         
-        AudioSimulator simulator(settings, sharedState, readyAudioQueue);
+        AudioBlockProcessor processor(settings.audioBlockFrames, sharedState, readyAudioQueue);
+        AudioSimulator simulator(settings, sharedState.stop, processor);
 
         // SharedState starts with playing == false.
         simulator.start();
@@ -94,11 +79,12 @@ namespace anasa
 
         SharedState sharedState;
 
-        SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS);
+        SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS, settings.channelCount, settings.audioBlockFrames);
 
         sharedState.playing.store(true, std::memory_order_release);
 
-        AudioSimulator simulator(settings, sharedState, readyAudioQueue);
+        AudioBlockProcessor processor(settings.audioBlockFrames, sharedState, readyAudioQueue);
+        AudioSimulator simulator(settings, sharedState.stop, processor);
 
         simulator.start();
 
@@ -120,10 +106,10 @@ namespace anasa
     TEST_CASE("AudioSimulator: consumes ready audio blocks without underrun")
     {
         AudioSettings settings = makeTestAudioSettings();
-
+        settings.channelCount = GENERATE(1, 2, 6, 16);
         SharedState sharedState;
 
-        SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS);
+        SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS, settings.channelCount, settings.audioBlockFrames);
 
         constexpr int bufferedBlocks = 32;
 
@@ -133,7 +119,8 @@ namespace anasa
 
         sharedState.playing.store(true, std::memory_order_release);
 
-        AudioSimulator simulator(settings, sharedState, readyAudioQueue);
+        AudioBlockProcessor processor(settings.audioBlockFrames, sharedState, readyAudioQueue);
+        AudioSimulator simulator(settings, sharedState.stop, processor);
 
         simulator.start();
 
@@ -148,7 +135,7 @@ namespace anasa
         REQUIRE(simulator.getUnderrunsCount() == 0);
 
         // Non-zero samples must have been consumed.
-        REQUIRE(simulator.getChecksum() > 0.0);
+        REQUIRE(simulator.getChecksum() == simulator.getCallbacksCount() * settings.audioBlockFrames * settings.channelCount * 0.25);
     }
 
 
@@ -158,7 +145,7 @@ namespace anasa
 
         SharedState sharedState;
 
-        SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS);
+        SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS, settings.channelCount, settings.audioBlockFrames);
 
         constexpr int bufferedBlocks = 32;
 
@@ -168,7 +155,8 @@ namespace anasa
 
         sharedState.playing.store(true, std::memory_order_release);
 
-        AudioSimulator simulator(settings, sharedState, readyAudioQueue);
+        AudioBlockProcessor processor(settings.audioBlockFrames, sharedState, readyAudioQueue);
+        AudioSimulator simulator(settings, sharedState.stop, processor);
 
         simulator.start();
 
@@ -190,15 +178,55 @@ namespace anasa
 
         SharedState sharedState;
 
-        SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS);
+        SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS, settings.channelCount, settings.audioBlockFrames);
 
-        AudioSimulator simulator(settings, sharedState, readyAudioQueue);
+        AudioBlockProcessor processor(settings.audioBlockFrames, sharedState, readyAudioQueue);
+        AudioSimulator simulator(settings, sharedState.stop, processor);
 
         REQUIRE_NOTHROW(simulator.start());
         REQUIRE_NOTHROW(simulator.start());
 
         REQUIRE_NOTHROW(simulator.stop());
         REQUIRE_NOTHROW(simulator.stop());
-    } 
+    }
+
+    TEST_CASE("AudioSimulator: drives an injected processor without playback state or a queue")
+    {
+        TestAudioBlockProcessor processor;
+        std::atomic<bool> engineStop{false};
+        
+        const int channelCount = GENERATE(1, 2, 6, 16);
+        AudioSettings settings = makeTestAudioSettings();
+        settings.channelCount = channelCount;
+        AudioSimulator simulator(settings, engineStop, processor);
+
+        simulator.start();
+        const bool processed = functions::waitUntil([&]
+        {
+            return processor.calls.load(std::memory_order_acquire) >= 3;
+        });
+        simulator.stop();
+
+        REQUIRE(processed);
+        REQUIRE(simulator.getCallbacksCount() == processor.calls.load());
+        REQUIRE(simulator.getUnderrunsCount() == 0);
+        REQUIRE(simulator.getChecksum() == simulator.getCallbacksCount() * 128 * 0.25 * channelCount);
+    }
+
+    TEST_CASE("AudioSimulator: rejects unsupported or mismatched settings")
+    {
+        TestAudioBlockProcessor processor;
+        std::atomic<bool> engineStop{false};
+        AudioSettings settings = makeTestAudioSettings();
+
+        SECTION("Zero sample rate") { settings.sampleRate = 0; }
+        SECTION("Negative sample rate") { settings.sampleRate = -1; }
+        SECTION("Zero callback size") { settings.audioBlockFrames = 0; }
+        SECTION("Oversized callback") { settings.audioBlockFrames = MAX_AUDIO_BLOCK_FRAMES + 1; }
+        SECTION("Mismatched block sizes") { settings.audioBlockFrames = 64; }
+        SECTION("Zero channels") { settings.channelCount = 0; }
+        SECTION("Negative channels") { settings.channelCount = -1; }
+        REQUIRE_THROWS_AS(AudioSimulator(settings, engineStop, processor), std::invalid_argument);
+    }
 
 } // namespace anasa

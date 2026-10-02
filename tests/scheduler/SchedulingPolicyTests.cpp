@@ -42,13 +42,13 @@ namespace anasa
         queue.push(functions::makeTile(RenderPriority::Visible, 2));
         queue.push(functions::makeTile(RenderPriority::Urgent, 3, 100));
 
-        REQUIRE(queue.top().priority == RenderPriority::Urgent);
+        REQUIRE(queue.top().classification.priority == RenderPriority::Urgent);
         queue.pop();
 
-        REQUIRE(queue.top().priority == RenderPriority::Visible);
+        REQUIRE(queue.top().classification.priority == RenderPriority::Visible);
         queue.pop();
 
-        REQUIRE(queue.top().priority == RenderPriority::Background);
+        REQUIRE(queue.top().classification.priority == RenderPriority::Background);
     }
 
     TEST_CASE("Scheduler policy: Priority applies deadline distance and FIFO tie breakers")

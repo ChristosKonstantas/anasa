@@ -3,11 +3,14 @@
 #include <chrono>
 #include <thread>
 #include <utility>
+#include <catch2/generators/catch_generators.hpp>
+#include <vector>
 
+#include "audio/AudioBlockProcessor.hpp"
 #include "utils/queues/SpscQueue.hpp"
-#include "audio-pipeline/AudioConstants.hpp"
-#include "audio-pipeline/AudioSettings.hpp"
-#include "audio-pipeline/AudioTypes.hpp"
+#include "audio/AudioConstants.hpp"
+#include "audio/AudioSettings.hpp"
+#include "audio/AudioTypes.hpp"
 #include "execution/Executor.hpp"
 #include "execution/ExecutorSettings.hpp"
 #include "playback/PlaybackState.hpp"
@@ -150,4 +153,127 @@ namespace anasa
         REQUIRE(firstNewBlock.frameCount == schedulerTestRig.audioSettings.audioBlockFrames);
     }
 
+    TEST_CASE("Scheduler: reaching the timeline end disables playback")
+    {
+        SchedulerTestRig schedulerTestRig;
+        schedulerTestRig.start();
+        REQUIRE(schedulerTestRig.scheduler.post({CommandType::Play, 0, 0}));
+        REQUIRE(functions::waitUntil([&]{return schedulerTestRig.sharedState.playing.load(std::memory_order_acquire);}));
+
+        // Model the consumer reaching the end in the current generation.
+        schedulerTestRig.sharedState.nextUnconsumedFrame.store(SchedulerTestRig::TOTAL_FRAMES, std::memory_order_release);
+        REQUIRE(functions::waitUntil([&]{return !schedulerTestRig.sharedState.playing.load(std::memory_order_acquire);}));
+    }
+
+    TEST_CASE("Scheduler: preserves channel samples through chunk boundaries seek and edit")
+    {
+        const int channelCount = GENERATE(1, 2, 6, 16);
+        const SchedulingPolicyType policy = GENERATE(SchedulingPolicyType::Priority, SchedulingPolicyType::Fifo);
+
+        SchedulerTestRig rig(policy, channelCount);
+        const int blockFrames = rig.audioSettings.audioBlockFrames;
+        AudioBlockProcessor processor(blockFrames, rig.sharedState, rig.readyAudioQueue);
+        AudioBuffer output(channelCount, blockFrames);
+        std::vector<float*> channels(channelCount);
+
+        for (int channel = 0; channel < channelCount; ++channel)
+            channels[channel] = output[channel].data();
+
+        const auto consumeBlock = [&](int firstFrame, int version, int generation)
+        {
+            REQUIRE(functions::waitUntil([&]
+            {
+                return rig.readyAudioQueue.front() != nullptr;
+            }));
+
+            const AudioBlock* block = rig.readyAudioQueue.front();
+
+            REQUIRE(block->firstFrame == firstFrame);
+            REQUIRE(block->generation == generation);
+            REQUIRE(block->frameCount == blockFrames);
+            REQUIRE(block->samples.channelCount() == channelCount);
+
+            const AudioProcessResult result = processor.processBlock({channels, blockFrames});
+
+            REQUIRE(result.playing);
+            REQUIRE_FALSE(result.underrun);
+            REQUIRE(rig.sharedState.nextUnconsumedFrame.load() == firstFrame + blockFrames);
+
+            for (int channel = 0; channel < channelCount; ++channel)
+            {
+                for (int frame = 0; frame < blockFrames; ++frame)
+                {
+                    CAPTURE(channel, frame, firstFrame, version, generation);
+
+                    REQUIRE(output[channel][frame] == rig.renderKernel.renderSample(channel, firstFrame + frame, version));
+                }
+            }
+        };
+
+        const auto play = [&]
+        {
+            REQUIRE(rig.scheduler.post({CommandType::Play, 0, 0}));
+
+            REQUIRE(functions::waitUntil([&]
+            {
+                return rig.sharedState.playing.load(std::memory_order_acquire);
+            }));
+        };
+
+        const auto pause = [&]
+        {
+            REQUIRE(rig.scheduler.post({CommandType::Pause, 0, 0}));
+
+            REQUIRE(functions::waitUntil([&]
+            {
+                return !rig.sharedState.playing.load(std::memory_order_acquire);
+            }));
+        };
+
+        const auto acknowledgeGeneration = [&](int generation, int target)
+        {
+            REQUIRE(functions::waitUntil([&]
+            {
+                return rig.sharedState.generation.load(std::memory_order_acquire) == generation;
+            }));
+
+            // A paused callback acknowledges the cursor and discards stale audio.
+            REQUIRE_FALSE(processor.processBlock({channels, blockFrames}).playing);
+            REQUIRE(rig.sharedState.audioCursorGeneration.load() == generation);
+            REQUIRE(rig.sharedState.nextUnconsumedFrame.load() == target);
+
+            for (int channel = 0; channel < channelCount; ++channel)
+                for (float sample : output[channel])
+                    REQUIRE(sample == 0.0f);
+        };
+
+        rig.start();
+        play();
+
+        // Include the first block from the following chunk.
+        for (int block = 0; block <= CHUNK_FRAMES / blockFrames; ++block)
+            consumeBlock(block * blockFrames, 1, 1);
+
+        REQUIRE(functions::waitUntil([&]{return rig.readyAudioQueue.isFull();}));
+
+        pause();
+
+        const int seekTarget = CHUNK_FRAMES + 2 * blockFrames;
+        REQUIRE(rig.scheduler.post({CommandType::Seek, seekTarget + 7, 0}));
+
+        acknowledgeGeneration(2, seekTarget);
+        play();
+        consumeBlock(seekTarget, 1, 2);
+
+        pause();
+
+        const int editTarget = seekTarget + blockFrames;
+        REQUIRE(rig.scheduler.post({CommandType::Edit, editTarget, editTarget}));
+
+        acknowledgeGeneration(3, editTarget);
+        REQUIRE(rig.versionTable.get(editTarget / CHUNK_FRAMES) == 2);
+
+        play();
+        consumeBlock(editTarget, 2, 3);
+    }
 } // namespace anasa

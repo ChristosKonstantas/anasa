@@ -8,9 +8,9 @@
 namespace anasa
 {
 
-    Executor::Executor(const ExecutorSettings& settings, Renderer& renderer)
+    Executor::Executor(const ExecutorSettings& settings, const ITileRenderer& renderer)
         : _settings(settings),
-          _renderer(renderer),
+          _taskProcessor(renderer),
           _stopRequested(false),
           _started(false)
     {
@@ -155,14 +155,12 @@ namespace anasa
         while (true)
         {
             RenderTask task;
-            // (1) Remove the oldest already-selected task from the FIFO _renderTasksQueue.
+
             {
                 std::unique_lock<std::mutex> lock(_taskMutex);
 
-                // Sleep if there is no work. Releases the mutex while sleeping.
-                _taskConditionVariable.wait(lock, [this]{return _stopRequested.load(std::memory_order_acquire) || !_renderTasksQueue.empty();});
-                
-                // We own the mutex again here.
+                _taskConditionVariable.wait(lock, [this]{ return _stopRequested.load(std::memory_order_acquire) || !_renderTasksQueue.empty();});
+
                 if (_stopRequested.load(std::memory_order_acquire))
                     return;
 
@@ -170,33 +168,14 @@ namespace anasa
                 _renderTasksQueue.pop();
             }
 
-            // (2) Render tile of popped task's job
-            // _taskMutex is no longer held, so other workers can take tasks while this worker performs expensive rendering.
-            try
-            {
-                bool rendered = _renderer.renderTile(*task.job, task.tileIndex, _stopRequested);
+            // Process outside the task mutex so other workers can take tasks.
+            const bool jobCompleted = _taskProcessor.process(task, _stopRequested);
 
-                if (!rendered)
-                    task.job->cancelled.store(true, std::memory_order_release);
-            }
-            catch (...)
-            {
-                // An exception must never escape a worker thread.
-                task.job->cancelled.store(true, std::memory_order_release);
-            }
-            
-            // (3) Publish completed jobs when none of them exists anymore
-
-            // previousTilesRemaining has the value before subtraction takes place
-            int previousTilesRemaining = task.job->tilesRemaining.fetch_sub(1, std::memory_order_acq_rel);
-
-            assert(previousTilesRemaining > 0);
-
-            if (previousTilesRemaining == 1)
+            if (jobCompleted)
             {
                 std::lock_guard<std::mutex> lock(_completedMutex);
                 _completedJobsQueue.push(std::move(task.job));
-            }   
+            }
         }
     }
 

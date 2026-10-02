@@ -3,6 +3,8 @@
 
 #include <array>
 #include <atomic>
+#include <cstddef>
+#include <utility>
 
 namespace anasa::old2
 {
@@ -13,6 +15,10 @@ template <class T, int capacity>
 class SpscQueue
 {
 public:
+    explicit SpscQueue(const T& initialValue)
+        : SpscQueue(initialValue, std::make_index_sequence<capacity>{})
+    {}
+    
     bool push(const T& item)
     {
         int write = _write.load(std::memory_order_relaxed);
@@ -61,7 +67,12 @@ public:
     }
 
 private:
-    std::array<T, capacity> _data{};
+    template <std::size_t... Indices>
+    SpscQueue(const T& initialValue, std::index_sequence<Indices...>)
+        : _data{(static_cast<void>(Indices), initialValue)...}
+    {}
+
+    std::array<T, capacity> _data;
 
     std::atomic<int> _write{0};
     std::atomic<int> _read{0};

@@ -1,4 +1,7 @@
 #include "scheduler/Scheduler.hpp"
+#include "render/Renderer.hpp"
+#include "render/kernels/SyntheticRenderKernel.hpp"
+#include "execution/Executor.hpp"
 
 namespace anasa
 {
@@ -8,15 +11,16 @@ namespace anasa
         static constexpr int CHUNK_COUNT = 16;
         static constexpr int TOTAL_FRAMES = CHUNK_COUNT * CHUNK_FRAMES;
 
-        explicit SchedulerTestRig(SchedulingPolicyType policy = SchedulingPolicyType::Priority)
-            :   audioSettings(makeAudioSettings()),
+        explicit SchedulerTestRig(SchedulingPolicyType policy = SchedulingPolicyType::Priority, int channelCount = 1)
+            :   audioSettings(makeAudioSettings(channelCount)),
                 renderSettings(makeRenderSettings()),
                 schedulerSettings(makeSchedulerSettings(policy)),
                 executorSettings(makeExecutorSettings()),
                 sharedState(),
                 versionTable(CHUNK_COUNT),
-                readyAudioQueue(READY_AUDIO_QUEUE_SLOTS),
-                renderer(audioSettings.sampleRate, renderSettings, versionTable),
+                readyAudioQueue(READY_AUDIO_QUEUE_SLOTS, audioSettings.channelCount, audioSettings.audioBlockFrames),
+                renderKernel(audioSettings.sampleRate, renderSettings.workIterations),
+                renderer(renderKernel, versionTable),
                 executor(executorSettings, renderer),
                 scheduler(schedulerSettings, audioSettings, renderSettings, TOTAL_FRAMES, sharedState, 
                           versionTable, executor, readyAudioQueue)
@@ -50,18 +54,19 @@ namespace anasa
         VersionTable versionTable;
         SpscQueue<AudioBlock> readyAudioQueue;
 
+        SyntheticRenderKernel renderKernel;
         Renderer renderer;
         Executor executor;
         Scheduler scheduler;
 
     private:
-        static AudioSettings makeAudioSettings()
+        static AudioSettings makeAudioSettings(int channelCount)
         {
             AudioSettings settings;
 
             settings.sampleRate = 48000;
             settings.audioBlockFrames = 128;
-            settings.channelCount = 1;
+            settings.channelCount = channelCount;
             
             return settings;
         }

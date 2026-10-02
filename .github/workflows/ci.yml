@@ -5,11 +5,14 @@ on:
 
   push:
     branches:
-      - main
+      - '**'
 
   pull_request:
     branches:
       - main
+      - multichannel-support
+      - spsc
+      - scheduler
 
 permissions:
   contents: read

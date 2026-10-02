@@ -10,16 +10,16 @@ namespace anasa
         //      - Earlier urgent deadline first
         //      - Nearer chunk first
         //      - Older submission first
-        if (a.priority != b.priority)
+        if (a.classification.priority != b.classification.priority)
         {
-            return static_cast<int>(a.priority) > static_cast<int>(b.priority);
+            return static_cast<int>(a.classification.priority) > static_cast<int>(b.classification.priority);
         }
 
-        if (a.priority == RenderPriority::Urgent && a.deadlineFrame != b.deadlineFrame)
-            return a.deadlineFrame > b.deadlineFrame;
+        if (a.classification.priority == RenderPriority::Urgent && a.classification.deadlineFrame != b.classification.deadlineFrame)
+            return a.classification.deadlineFrame > b.classification.deadlineFrame;
 
-        if (a.distanceInFrames != b.distanceInFrames)
-            return a.distanceInFrames > b.distanceInFrames;
+        if (a.classification.distanceInFrames != b.classification.distanceInFrames)
+            return a.classification.distanceInFrames > b.classification.distanceInFrames;
 
         return a.sequence > b.sequence;
     }
