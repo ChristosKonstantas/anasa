@@ -1,11 +1,9 @@
 #ifndef TIMELINE_AUDIO_PUBLISHER_HPP
 #define TIMELINE_AUDIO_PUBLISHER_HPP
 
-#include <span>
 
 #include "audio/AudioTypes.hpp"
 #include "scheduler/IRenderCacheReader.hpp"
-#include "render/RenderTypes.hpp"
 #include "utils/queues/SpscQueue.hpp"
 
 namespace anasa

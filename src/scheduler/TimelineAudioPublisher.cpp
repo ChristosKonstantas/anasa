@@ -1,6 +1,6 @@
-
 #include <algorithm>
 #include <cassert>
+#include <span>
 #include <stdexcept>
 
 #include "scheduler/TimelineAudioPublisher.hpp"

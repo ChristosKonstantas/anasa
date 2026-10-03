@@ -25,6 +25,7 @@ if(BUILD_TESTS)
         scheduler/SchedulerBoundaryTests.cpp
         scheduler/TimelineAudioPublisherTests.cpp
         scheduler/RenderCacheTests.cpp
+        scheduler/ActiveRenderJobsTests.cpp
         engine/EngineTests.cpp
     )
 

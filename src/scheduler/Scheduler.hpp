@@ -23,6 +23,7 @@
 #include "playback/PlaybackController.hpp"
 #include "scheduler/TimelineAudioPublisher.hpp"
 #include "scheduler/RenderCache.hpp"
+#include "scheduler/ActiveRenderJobs.hpp"
 
 namespace anasa
 {
@@ -101,7 +102,7 @@ namespace anasa
              
         std::vector<PendingRenderTile>               _reclassificationBuffer;
         RenderCache                                  _cache;
-        std::vector<std::shared_ptr<RenderJob>>      _activeJobs;
+        ActiveRenderJobs                             _activeJobs;
              
         std::thread                                  _schedulerThread;
         std::atomic<bool>                            _stopRequested;

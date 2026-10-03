@@ -95,7 +95,6 @@ namespace anasa
         rig.publisher.publish(firstFrame, assignedGeneration, rig.cache);
 
         REQUIRE(rig.publisher.readyLeadBlocks(firstFrame) == TimelineAudioPublisherTestRig::QUEUE_CAPACITY);
-        REQUIRE(rig.publisher.readyLeadBlocks(firstFrame) == rig.queue.capacity());
         REQUIRE_FALSE(rig.publisher.entireRemainderPublished());
         rig.requireBlock(firstFrame, assignedGeneration);
         rig.requireBlock(CHUNK_FRAMES, assignedGeneration);

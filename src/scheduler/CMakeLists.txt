@@ -4,6 +4,8 @@ anasa_add_module(
         IRenderCacheReader.hpp
         RenderCache.hpp
         RenderCache.cpp
+        ActiveRenderJobs.hpp
+        ActiveRenderJobs.cpp
         TimelineAudioPublisher.hpp
         TimelineAudioPublisher.cpp
         Scheduler.hpp

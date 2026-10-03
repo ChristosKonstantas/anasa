@@ -34,7 +34,7 @@ namespace anasa
           _pendingTiles(SchedulingPolicyCompare(createSchedulingPolicy(schedulerSettings.policyType)), makeReservedTileStorage(_settings.maxPendingTiles)),
           _reclassificationBuffer(makeReservedTileStorage(_settings.maxPendingTiles)),
           _cache(_channelCount, _totalFrames, _versionTable),
-          _activeJobs(_chunkCount),
+          _activeJobs(_channelCount, _chunkCount),
           _stopRequested(false),
           _started(false),
           _backgroundAllowed(true),
@@ -156,14 +156,7 @@ namespace anasa
         while (!_commandQueue.isEmpty())
             _commandQueue.pop();
 
-        for (std::shared_ptr<RenderJob>& job : _activeJobs)
-        {
-            if (job != nullptr)
-            {
-                job->cancelled.store(true, std::memory_order_relaxed);
-                job.reset();
-            }
-        }
+        _activeJobs.cancelAll();
 
         _playbackController.resetPlayRequest();
         _backgroundAllowed = true;
@@ -293,23 +286,8 @@ namespace anasa
 
         while (_executor.popCompleted(job))
         {
-            if (job == nullptr)
-                continue;
-
-            const int chunk = job->chunk;
-
-            if (chunk < 0 || chunk >= _chunkCount)
-                continue;
-
-            std::shared_ptr<RenderJob>& activeJob = _activeJobs[chunk];
-
-            if (activeJob != job)
-                continue;
-
-            if (!job->cancelled.load(std::memory_order_relaxed))
-                _cache.store(chunk, job->version, job->samples);
-
-            activeJob.reset();
+            if (_activeJobs.finish(job))
+                _cache.store(job->chunk, job->version, job->samples);
         }
     }
 
@@ -486,10 +464,7 @@ namespace anasa
 
         const int version = _versionTable.get(chunk);
 
-        std::shared_ptr<RenderJob>& currentJob = _activeJobs[chunk];
-        
-        // this is well scheduled already, therefore no need to schedule again (not nullptr, version is the same, not cancelled)
-        if (currentJob != nullptr && currentJob->version == version && !currentJob->cancelled.load(std::memory_order_relaxed))
+        if (_activeJobs.hasCurrent(chunk, version))
             return;
 
         const RenderClassification classification = classifyChunk(chunk, playheadFrame);
@@ -498,16 +473,7 @@ namespace anasa
         if (static_cast<int>(_pendingTiles.size()) + TILES_PER_CHUNK > queueLimit)
             return;
 
-        if (currentJob != nullptr) // cancelled or version is different
-            currentJob->cancelled.store(true, std::memory_order_relaxed);
-
-        // now, activeJob will be replaced with a new job below
-        std::shared_ptr<RenderJob> jobToSchedule = std::make_shared<RenderJob>(_channelCount);
-
-        jobToSchedule->chunk = chunk;
-        jobToSchedule->version = version;
-        jobToSchedule->cancelled.store(false, std::memory_order_relaxed); // the only false store as it initializes a newly created unpublished job
-        jobToSchedule->tilesRemaining.store(TILES_PER_CHUNK, std::memory_order_relaxed);
+        const std::shared_ptr<RenderJob> jobToSchedule = _activeJobs.create(chunk, version);
 
         for (int tileIndex = 0; tileIndex < TILES_PER_CHUNK; ++tileIndex)
         {
@@ -520,8 +486,6 @@ namespace anasa
 
             _pendingTiles.push(std::move(tile));
         }
-
-        currentJob = std::move(jobToSchedule);
     }
 
     void Scheduler::dispatchPendingTiles()
@@ -572,9 +536,7 @@ namespace anasa
         for (int chunk = firstChunk; chunk <= lastChunk; ++chunk)
         {
             _versionTable.bump(chunk);
-
-            if (_activeJobs[chunk] != nullptr)
-                _activeJobs[chunk]->cancelled.store(true, std::memory_order_relaxed);
+            _activeJobs.cancel(chunk);
         }
     }
 
