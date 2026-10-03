@@ -1,9 +1,9 @@
 #include <stdexcept>
-#include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
+#include "scheduler/RenderCache.hpp"
 #include "render/VersionTable.hpp"
 #include "scheduler/TimelineAudioPublisher.hpp"
 
@@ -13,28 +13,29 @@ namespace anasa
     {
     public:
         static constexpr int QUEUE_CAPACITY = 2;
+        static constexpr int CHUNK_COUNT = 2;
         static constexpr int BLOCK_FRAMES = 128;
-        static constexpr int TOTAL_FRAMES = QUEUE_CAPACITY * CHUNK_FRAMES;
+        static constexpr int TOTAL_FRAMES = CHUNK_COUNT * CHUNK_FRAMES;
 
         explicit TimelineAudioPublisherTestRig(int channelCount = 1)
-            : versions(QUEUE_CAPACITY),
-              queue(QUEUE_CAPACITY, channelCount, BLOCK_FRAMES + 1),
-              publisher(BLOCK_FRAMES, channelCount, TOTAL_FRAMES, queue)
+           : versions(CHUNK_COUNT),
+             cache(channelCount, TOTAL_FRAMES, versions),
+             queue(QUEUE_CAPACITY, channelCount, BLOCK_FRAMES + 1),
+             publisher(BLOCK_FRAMES, channelCount, TOTAL_FRAMES, queue)
         {
-            cache.reserve(QUEUE_CAPACITY);
-
-            for (int chunk = 0; chunk < QUEUE_CAPACITY; ++chunk)
+            for (int chunk = 0; chunk < CHUNK_COUNT; ++chunk)
             {
-                cache.emplace_back(channelCount);
-                cache.back().version = versions.get(chunk);
+                AudioBuffer chunkSamples(channelCount, CHUNK_FRAMES);
 
                 for (int channel = 0; channel < channelCount; ++channel)
                 {
-                    const auto samples = cache.back().samples[channel];
+                    const std::span<float> samples = chunkSamples[channel];
 
                     for (int frame = 0; frame < CHUNK_FRAMES; ++frame)
                         samples[frame] = static_cast<float>(channel * TOTAL_FRAMES + chunk * CHUNK_FRAMES + frame);
                 }
+
+                REQUIRE(cache.store(chunk, versions.get(chunk), chunkSamples));
             }
         }
 
@@ -59,9 +60,9 @@ namespace anasa
             REQUIRE(queue.pop());
         }
 
-        VersionTable versions;
-        std::vector<CacheEntry> cache;
-        SpscQueue<AudioBlock> queue;
+        VersionTable           versions;
+        RenderCache            cache;
+        SpscQueue<AudioBlock>  queue;
         TimelineAudioPublisher publisher;
     };
 
@@ -91,7 +92,7 @@ namespace anasa
         const int firstFrame = CHUNK_FRAMES - rig.BLOCK_FRAMES;
         const int assignedGeneration = 5;
         rig.publisher.reset(firstFrame);
-        rig.publisher.publish(firstFrame, assignedGeneration, rig.cache, rig.versions);
+        rig.publisher.publish(firstFrame, assignedGeneration, rig.cache);
 
         REQUIRE(rig.publisher.readyLeadBlocks(firstFrame) == TimelineAudioPublisherTestRig::QUEUE_CAPACITY);
         REQUIRE(rig.publisher.readyLeadBlocks(firstFrame) == rig.queue.capacity());
@@ -101,21 +102,23 @@ namespace anasa
         REQUIRE(rig.queue.isEmpty());
     }
 
-    TEST_CASE("TimelineAudioPublisher: waits for missing or outdated content without skipping ahead")
+    TEST_CASE("TimelineAudioPublisher: waits for unavailable content without skipping ahead")
     {
         TimelineAudioPublisherTestRig rig;
-        SECTION("Missing content") { rig.cache[0].version = 0; }
-        SECTION("Outdated content") { rig.versions.bump(0); }
+        const AudioBuffer* currentSamples = rig.cache.findCurrent(0);
+        REQUIRE(currentSamples != nullptr);
+        const AudioBuffer samples = *currentSamples;
+        rig.versions.bump(0);
 
         const int firstFrame = 0;
         const int assignedGeneration = 1;
 
-        rig.publisher.publish(firstFrame, assignedGeneration, rig.cache, rig.versions);
+        rig.publisher.publish(firstFrame, assignedGeneration, rig.cache);
         REQUIRE(rig.queue.isEmpty());
         REQUIRE(rig.publisher.readyLeadBlocks(firstFrame) == 0);
 
-        rig.cache[0].version = rig.versions.get(0);
-        rig.publisher.publish(firstFrame, assignedGeneration, rig.cache, rig.versions);
+        REQUIRE(rig.cache.store(0, rig.versions.get(0), samples));
+        rig.publisher.publish(firstFrame, assignedGeneration, rig.cache);
         rig.requireBlock(firstFrame, assignedGeneration);
         rig.requireBlock(rig.BLOCK_FRAMES, assignedGeneration);
     }
@@ -126,10 +129,10 @@ namespace anasa
         const int firstFrame = 0;
         const int assignedGeneration = 1;
 
-        rig.publisher.publish(firstFrame, assignedGeneration, rig.cache, rig.versions);
+        rig.publisher.publish(firstFrame, assignedGeneration, rig.cache);
         rig.requireBlock(firstFrame, assignedGeneration);
 
-        rig.publisher.publish(rig.BLOCK_FRAMES, 1, rig.cache, rig.versions);
+        rig.publisher.publish(rig.BLOCK_FRAMES, 1, rig.cache);
         REQUIRE(rig.publisher.readyLeadBlocks(rig.BLOCK_FRAMES) == TimelineAudioPublisherTestRig::QUEUE_CAPACITY);
         rig.requireBlock(rig.BLOCK_FRAMES, 1);
         rig.requireBlock(2 * rig.BLOCK_FRAMES, 1);
@@ -140,7 +143,7 @@ namespace anasa
     {
         TimelineAudioPublisherTestRig rig;
         const int currentFrame = 3 * rig.BLOCK_FRAMES;
-        rig.publisher.publish(currentFrame, 1, rig.cache, rig.versions);
+        rig.publisher.publish(currentFrame, 1, rig.cache);
 
         REQUIRE(rig.publisher.readyLeadBlocks(currentFrame) == TimelineAudioPublisherTestRig::QUEUE_CAPACITY);
         REQUIRE(rig.publisher.readyLeadBlocks(rig.TOTAL_FRAMES) == 0);
@@ -153,15 +156,15 @@ namespace anasa
         TimelineAudioPublisherTestRig rig;
 
         rig.publisher.reset(CHUNK_FRAMES);
-        rig.publisher.publish(CHUNK_FRAMES, 1, rig.cache, rig.versions);
+        rig.publisher.publish(CHUNK_FRAMES, 1, rig.cache);
 
         rig.publisher.reset(0);
-        rig.publisher.publish(0, 2, rig.cache, rig.versions);
+        rig.publisher.publish(0, 2, rig.cache);
         REQUIRE(rig.publisher.readyLeadBlocks(0) == 0);
         rig.requireBlock(CHUNK_FRAMES, 1);
         rig.requireBlock(CHUNK_FRAMES + rig.BLOCK_FRAMES, 1);
 
-        rig.publisher.publish(0, 2, rig.cache, rig.versions);
+        rig.publisher.publish(0, 2, rig.cache);
         rig.requireBlock(0, 2);
         rig.requireBlock(rig.BLOCK_FRAMES, 2);
     }
@@ -171,14 +174,14 @@ namespace anasa
         TimelineAudioPublisherTestRig rig;
         const int lastBlock = rig.TOTAL_FRAMES - rig.BLOCK_FRAMES;
         rig.publisher.reset(lastBlock);
-        rig.publisher.publish(lastBlock, 1, rig.cache, rig.versions);
+        rig.publisher.publish(lastBlock, 1, rig.cache);
 
         REQUIRE(rig.publisher.entireRemainderPublished());
         REQUIRE(rig.publisher.readyLeadBlocks(lastBlock) == 1);
         rig.requireBlock(lastBlock, 1);
         REQUIRE(rig.queue.isEmpty());
 
-        rig.publisher.publish(rig.TOTAL_FRAMES, 1, rig.cache, rig.versions);
+        rig.publisher.publish(rig.TOTAL_FRAMES, 1, rig.cache);
         REQUIRE(rig.publisher.readyLeadBlocks(rig.TOTAL_FRAMES) == 0);
         REQUIRE(rig.queue.isEmpty());
 

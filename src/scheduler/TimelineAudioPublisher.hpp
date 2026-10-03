@@ -4,7 +4,7 @@
 #include <span>
 
 #include "audio/AudioTypes.hpp"
-#include "render/IChunkVersionReader.hpp"
+#include "scheduler/IRenderCacheReader.hpp"
 #include "render/RenderTypes.hpp"
 #include "utils/queues/SpscQueue.hpp"
 
@@ -17,7 +17,7 @@ namespace anasa
 
         void reset(int targetFrame) noexcept;
 
-        void publish(int nextUnconsumedFrame, int generation, std::span<const CacheEntry> cache, const IChunkVersionReader& versions);
+        void publish(int nextUnconsumedFrame, int generation, const IRenderCacheReader& cache);
 
         int  readyLeadBlocks(int nextUnconsumedFrame) const noexcept;
 
@@ -30,7 +30,7 @@ namespace anasa
         SpscQueue<AudioBlock>& _readyAudioQueue;
         int                    _nextFrameToPublish = 0;
     };
-    
+
 } // namespace anasa
 
 #endif // TIMELINE_AUDIO_PUBLISHER_HPP

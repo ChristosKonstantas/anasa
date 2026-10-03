@@ -1,6 +1,9 @@
 anasa_add_module(
     scheduler
     SOURCES
+        IRenderCacheReader.hpp
+        RenderCache.hpp
+        RenderCache.cpp
         TimelineAudioPublisher.hpp
         TimelineAudioPublisher.cpp
         Scheduler.hpp

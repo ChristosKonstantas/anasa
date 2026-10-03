@@ -22,6 +22,7 @@
 #include "playback/PlaybackProtocol.hpp"
 #include "playback/PlaybackController.hpp"
 #include "scheduler/TimelineAudioPublisher.hpp"
+#include "scheduler/RenderCache.hpp"
 
 namespace anasa
 {
@@ -99,7 +100,7 @@ namespace anasa
             SchedulingPolicyCompare>                 _pendingTiles;
              
         std::vector<PendingRenderTile>               _reclassificationBuffer;
-        std::vector<CacheEntry>                      _cache;
+        RenderCache                                  _cache;
         std::vector<std::shared_ptr<RenderJob>>      _activeJobs;
              
         std::thread                                  _schedulerThread;

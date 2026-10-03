@@ -33,6 +33,7 @@ namespace anasa
           _commandQueue(validateCommandQueueSlots(schedulerSettings.commandQueueSlots)),
           _pendingTiles(SchedulingPolicyCompare(createSchedulingPolicy(schedulerSettings.policyType)), makeReservedTileStorage(_settings.maxPendingTiles)),
           _reclassificationBuffer(makeReservedTileStorage(_settings.maxPendingTiles)),
+          _cache(_channelCount, _totalFrames, _versionTable),
           _activeJobs(_chunkCount),
           _stopRequested(false),
           _started(false),
@@ -79,16 +80,6 @@ namespace anasa
 
         if (_settings.urgentReservedTiles < TILES_PER_CHUNK)
             throw std::invalid_argument("urgentReservedTiles must hold one complete chunk");
-
-        const int expectedChunkCount = 1 + (_totalFrames - 1) / CHUNK_FRAMES;
-
-        if (_chunkCount != expectedChunkCount)
-            throw std::invalid_argument("VersionTable size does not match timeline chunk count");
-        
-        _cache.reserve(static_cast<std::size_t>(_chunkCount));
-
-        for (int chunk = 0; chunk < _chunkCount; ++chunk)
-            _cache.emplace_back(_channelCount);
 
         _viewportLastFrame = audioSettings.sampleRate > _totalFrames / 2 ? _totalFrames : 2 * audioSettings.sampleRate;
     }
@@ -312,28 +303,11 @@ namespace anasa
 
             std::shared_ptr<RenderJob>& activeJob = _activeJobs[chunk];
 
-            // Ignore completion from a job that has already been replaced.
             if (activeJob != job)
                 continue;
 
-            if (job->cancelled.load(std::memory_order_relaxed) || _versionTable.get(chunk) != job->version ||
-                job->samples.channelCount() != _channelCount || job->samples.frameCount() != CHUNK_FRAMES)
-            {
-                activeJob.reset();
-                continue;
-            }
-            CacheEntry& cacheForCurrentChunk = _cache[chunk];
-
-            for (int channel = 0; channel < _channelCount; ++channel)
-            {
-                const auto source = job->samples[channel];
-                const auto destination = cacheForCurrentChunk.samples[channel];
-
-                for (int sample = 0; sample < job->samples.frameCount(); ++sample)
-                    destination[sample] = source[sample];
-            }
-
-            _cache[chunk].version = job->version;
+            if (!job->cancelled.load(std::memory_order_relaxed))
+                _cache.store(chunk, job->version, job->samples);
 
             activeJob.reset();
         }
@@ -354,7 +328,7 @@ namespace anasa
         }
 
         const int generation = _sharedState.generation.load(std::memory_order_acquire);
-        _audioPublisher.publish(nextUnconsumedFrame, generation, _cache, _versionTable);
+        _audioPublisher.publish(nextUnconsumedFrame, generation, _cache);
 
         _playbackController.startIfReady(readyLeadBlocks(), _audioPublisher.entireRemainderPublished());
     }
@@ -606,7 +580,7 @@ namespace anasa
 
     bool Scheduler::cacheIsCurrent(int chunk) const
     {
-        return _cache[chunk].version == _versionTable.get(chunk);
+        return _cache.findCurrent(chunk) != nullptr;
     }
 
     int Scheduler::readyLeadBlocks() const
