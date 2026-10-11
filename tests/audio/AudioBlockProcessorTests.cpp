@@ -401,4 +401,37 @@ namespace anasa
                 REQUIRE(sample == 0.0f);
         }
     }
+
+    TEST_CASE("AudioBlockProcessor: cursor cannot overflow while waiting for the scheduler to stop playback")
+    {
+        constexpr int blockFrames = 128;
+        constexpr int maximumFrame = std::numeric_limits<int>::max();
+        constexpr int lastBoundary = maximumFrame - maximumFrame % blockFrames;
+
+        SharedState state;
+        state.targetFrame.store(lastBoundary - blockFrames);
+        state.playing.store(true);
+
+        SpscQueue<AudioBlock> queue(2, 1, blockFrames);
+        AudioBlockProcessor processor(blockFrames, state, queue);
+
+        std::array<float, blockFrames> samples{};
+        float* channels[] = {samples.data()};
+
+        REQUIRE(processor.processBlock({channels, blockFrames}).underrun);
+        REQUIRE(state.nextUnconsumedFrame.load() == lastBoundary);
+
+        REQUIRE_FALSE(processor.processBlock({channels, blockFrames}).playing);
+        REQUIRE(state.nextUnconsumedFrame.load() == lastBoundary);
+
+        REQUIRE_FALSE(processor.processBlock({channels, blockFrames}).playing);
+        REQUIRE(state.nextUnconsumedFrame.load() == lastBoundary);
+
+        // A later generation can resume at an ordinary timeline position.
+        state.targetFrame.store(0);
+        state.generation.fetch_add(1);
+
+        REQUIRE(processor.processBlock({channels, blockFrames}).underrun);
+        REQUIRE(state.nextUnconsumedFrame.load() == blockFrames);
+    }
 } // namespace anasa

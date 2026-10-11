@@ -255,7 +255,7 @@ namespace anasa
 
             case CommandType::SetViewport:
             {
-                _viewportFirstFrame = clampTimelineFrame(command.firstFrame, _totalFrames);
+                _viewportFirstFrame = clampTimelineBoundary(command.firstFrame, _totalFrames);
 
                 _viewportLastFrame = clampTimelineBoundary(std::max(command.firstFrame, command.lastFrame), _totalFrames);
 
@@ -552,9 +552,12 @@ namespace anasa
 
     bool Scheduler::chunkIntersectsViewport(int chunk) const
     {
+        if (_viewportFirstFrame >= _viewportLastFrame)
+            return false;
+
         const int chunkFirstFrame = firstFrameOfChunk(chunk);
         const int chunkLastFrame = chunkFirstFrame + std::min(CHUNK_FRAMES, _totalFrames - chunkFirstFrame);
-        
+
         // Both ranges are half-open:
         // chunk:    [chunkFirstFrame, chunkLastFrame)
         // viewport: [_viewportFirstFrame, _viewportLastFrame)
