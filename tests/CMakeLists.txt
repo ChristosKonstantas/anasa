@@ -20,6 +20,7 @@ if(BUILD_TESTS)
         audio/AudioBufferTests.cpp
         playback/PlaybackProtocolTests.cpp
         playback/PlaybackControllerTests.cpp
+        playback/BackgroundRenderGateTests.cpp
         scheduler/SchedulingPolicyTests.cpp
         scheduler/SchedulerIntegrationTests.cpp
         scheduler/SchedulerBoundaryTests.cpp

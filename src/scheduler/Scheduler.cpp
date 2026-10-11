@@ -27,6 +27,7 @@ namespace anasa
           _sharedState(sharedState),
           _playbackProtocol(totalFrames, sharedState),
           _playbackController(schedulerSettings.prebufferBlocks, schedulerSettings.rebufferOnEdit, sharedState.playing),
+          _backgroundGate(schedulerSettings.lowWaterBlocks, schedulerSettings.highWaterBlocks),
           _versionTable(versionTable),
           _executor(executor),
           _audioPublisher(_audioBlockFrames, _channelCount, _totalFrames, readyAudioQueue),
@@ -37,7 +38,6 @@ namespace anasa
           _activeJobs(_channelCount, _chunkCount),
           _stopRequested(false),
           _started(false),
-          _backgroundAllowed(true),
           _pendingClassificationsDirty(true),
           _viewportFirstFrame(0),
           _viewportLastFrame(0),
@@ -51,12 +51,6 @@ namespace anasa
 
         if (_contextFrames < 0)
             throw std::invalid_argument("contextFrames must not be negative");
-
-        if (_settings.lowWaterBlocks < 0)
-            throw std::invalid_argument("lowWaterBlocks must not be negative");
-
-        if (_settings.highWaterBlocks < _settings.lowWaterBlocks)
-            throw std::invalid_argument("highWaterBlocks must not be smaller than lowWaterBlocks");
 
         if (_settings.urgentChunks <= 0)
             throw std::invalid_argument("urgentChunks must be greater than zero");
@@ -114,7 +108,7 @@ namespace anasa
 
         _stopRequested.store(false, std::memory_order_release);
         _playbackController.resetPlayRequest();
-        _backgroundAllowed = true;
+        _backgroundGate.reset();
         _pendingClassificationsDirty = true;
         _lastClassifiedPlayheadChunk = -1;
         _audioPublisher.reset(_playbackProtocol.currentFrame());
@@ -159,7 +153,7 @@ namespace anasa
         _activeJobs.cancelAll();
 
         _playbackController.resetPlayRequest();
-        _backgroundAllowed = true;
+        _backgroundGate.reset();
         _timelineScanCursorInChunks = 0;
         _nextTileSequence = 0;
         _started = false;
@@ -315,16 +309,11 @@ namespace anasa
     {
         if (_settings.policyType == SchedulingPolicyType::Fifo || !_playbackController.playRequested())
         {
-            _backgroundAllowed = true;
+            _backgroundGate.reset();
             return;
         }
 
-        const int leadBlocks = readyLeadBlocks();
-
-        if (leadBlocks < _settings.lowWaterBlocks)
-            _backgroundAllowed = false;
-        else if (leadBlocks >= _settings.highWaterBlocks)
-            _backgroundAllowed = true;
+        _backgroundGate.observe(readyLeadBlocks());
     }
 
     void Scheduler::scheduleRenderJobs()
@@ -494,9 +483,9 @@ namespace anasa
         {
             const PendingRenderTile& tile = _pendingTiles.top();
 
-            if (!_backgroundAllowed && tile.classification.priority == RenderPriority::Background)
+            if (!_backgroundGate.allowsBackground() && tile.classification.priority == RenderPriority::Background)
                 return;
-
+            
             RenderTask task;
             task.job = tile.job;
             task.tileIndex = tile.tileIndex;

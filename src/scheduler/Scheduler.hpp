@@ -21,6 +21,7 @@
 #include "utils/queues/SpscQueue.hpp"
 #include "playback/PlaybackProtocol.hpp"
 #include "playback/PlaybackController.hpp"
+#include "playback/BackgroundRenderGate.hpp"
 #include "scheduler/TimelineAudioPublisher.hpp"
 #include "scheduler/RenderCache.hpp"
 #include "scheduler/ActiveRenderJobs.hpp"
@@ -90,6 +91,8 @@ namespace anasa
         SharedState&                                 _sharedState;
         PlaybackProtocol                             _playbackProtocol;
         PlaybackController                           _playbackController;
+        BackgroundRenderGate                         _backgroundGate;
+
         VersionTable&                                _versionTable;
         IRenderExecutor&                             _executor;
         TimelineAudioPublisher                       _audioPublisher;             
@@ -108,7 +111,6 @@ namespace anasa
         std::atomic<bool>                            _stopRequested;
              
         bool                                         _started;
-        bool                                         _backgroundAllowed;
         bool                                         _pendingClassificationsDirty;
              
         int                                          _viewportFirstFrame;
