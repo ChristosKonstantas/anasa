@@ -42,6 +42,7 @@ namespace anasa
           _viewportFirstFrame(0),
           _viewportLastFrame(0),
           _lastClassifiedPlayheadChunk(-1),
+          _lastClassifiedUrgentChunkEnd(-1),
           _timelineScanCursorInChunks(0),
           _nextTileSequence(0)
     {
@@ -111,6 +112,7 @@ namespace anasa
         _backgroundGate.reset();
         _pendingClassificationsDirty = true;
         _lastClassifiedPlayheadChunk = -1;
+        _lastClassifiedUrgentChunkEnd = -1;
         _audioPublisher.reset(_playbackProtocol.currentFrame());
         
         _started = true;
@@ -321,9 +323,10 @@ namespace anasa
         const int playheadFrame = _playbackProtocol.currentFrame();
 
         const int playheadChunk = playheadFrame < _totalFrames ? frameToChunk(playheadFrame) : _chunkCount;
+        const int urgentEndChunk = urgentChunkEnd(playheadFrame);
 
         // Rebuild only when priorities may have materially changed.
-        const bool classificationChanged = _pendingClassificationsDirty || playheadChunk != _lastClassifiedPlayheadChunk;
+        const bool classificationChanged = _pendingClassificationsDirty || playheadChunk != _lastClassifiedPlayheadChunk || urgentEndChunk != _lastClassifiedUrgentChunkEnd;
 
         // Refresh priority, deadline and distance for _pendingTiles. This is required for Priority scheduling, not for FIFO scheduling.
         if (_settings.policyType == SchedulingPolicyType::Priority && classificationChanged)
@@ -331,14 +334,12 @@ namespace anasa
 
         _pendingClassificationsDirty = false;
         _lastClassifiedPlayheadChunk = playheadChunk;
+        _lastClassifiedUrgentChunkEnd = urgentEndChunk;
 
         // (1) Playback-near chunks (urgent).
         if (_playbackController.playRequested() && playheadFrame < _totalFrames)
         {
-            const int firstChunk = frameToChunk(playheadFrame);
-            const int lastChunk = firstChunk + std::min(_settings.urgentChunks, _chunkCount - firstChunk);
-
-            for (int chunk = firstChunk; chunk < lastChunk; ++chunk)
+            for (int chunk = playheadChunk; chunk < urgentEndChunk; ++chunk)
                 scheduleChunk(chunk, playheadFrame);
         }
 
@@ -420,7 +421,7 @@ namespace anasa
         if (_playbackController.playRequested() && boundedPlayhead < _totalFrames)
         {
             const int firstUrgentChunk = frameToChunk(boundedPlayhead);
-            const int lastUrgentChunk = firstUrgentChunk + std::min(_settings.urgentChunks, _chunkCount - firstUrgentChunk);
+            const int lastUrgentChunk = urgentChunkEnd(boundedPlayhead);
 
             if (chunk >= firstUrgentChunk && chunk < lastUrgentChunk)
             {
@@ -559,6 +560,24 @@ namespace anasa
             return _settings.maxPendingTiles;
 
         return _settings.maxPendingTiles - _settings.urgentReservedTiles;
+    }
+
+    int Scheduler::urgentChunkEnd(int playheadFrame) const
+    {
+        assert(playheadFrame >= 0 && playheadFrame <= _totalFrames);
+        if (playheadFrame == _totalFrames)
+            return _chunkCount;
+
+        const int firstChunk = frameToChunk(playheadFrame);
+        const int configuredEnd = firstChunk + std::min(_settings.urgentChunks, _chunkCount - firstChunk);
+        const int remainingBlocks = (_totalFrames - playheadFrame) / _audioBlockFrames;
+        const int prebufferFrames = std::min(_settings.prebufferBlocks, remainingBlocks) * _audioBlockFrames;
+        if (prebufferFrames == 0)
+            return configuredEnd;
+
+        // The exclusive end must include every chunk touched by the prebuffer range.
+        const int prebufferEnd = frameToChunk(playheadFrame + prebufferFrames - 1) + 1;
+        return std::max(configuredEnd, prebufferEnd);
     }
 
 } // namespace anasa

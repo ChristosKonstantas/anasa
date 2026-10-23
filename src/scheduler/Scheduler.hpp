@@ -80,6 +80,7 @@ namespace anasa
         int                                          readyLeadBlocks() const;
         bool                                         chunkIntersectsViewport(int chunk) const;
         int                                          pendingTileLimit(RenderPriority priority) const;
+        int                                          urgentChunkEnd(int playheadFrame) const;
 
         const SchedulerSettings                      _settings;
         const int                                    _audioBlockFrames;
@@ -116,6 +117,7 @@ namespace anasa
         int                                          _viewportFirstFrame;
         int                                          _viewportLastFrame;
         int                                          _lastClassifiedPlayheadChunk;
+        int                                          _lastClassifiedUrgentChunkEnd;
         int                                          _timelineScanCursorInChunks;
              
         long long                                    _nextTileSequence;        

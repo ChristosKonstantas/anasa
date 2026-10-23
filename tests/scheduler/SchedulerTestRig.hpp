@@ -1,3 +1,5 @@
+#include <cassert>
+
 #include "scheduler/Scheduler.hpp"
 #include "render/Renderer.hpp"
 #include "render/kernels/SyntheticRenderKernel.hpp"
@@ -43,6 +45,23 @@ namespace anasa
         {
             scheduler.stop();
             executor.stop();
+        }
+
+        // These helpers require a stopped scheduler and run on the test thread.
+        static void handleCommand(Scheduler& scheduler, Command command)
+        {
+            assert(!scheduler._started);
+            scheduler.handleCommand(command);
+        }
+
+        static void runIteration(Scheduler& scheduler)
+        {
+            assert(!scheduler._started);
+            scheduler.collectFinishedJobs();
+            scheduler.feedAudioQueue();
+            scheduler.updateBackgroundAdmission();
+            scheduler.scheduleRenderJobs();
+            scheduler.dispatchPendingTiles();
         }
 
         AudioSettings audioSettings;
