@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   build-and-test:
-    name: Build and test (${{ matrix.os }})
+    name: Build and test (${{ matrix.os }}, ${{ matrix.build_type }})
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -43,10 +43,10 @@ jobs:
           sudo apt-get install -y g++ cmake
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON -DBENCHMARKS=Off
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DBUILD_TESTS=ON -DBENCHMARKS=OFF
 
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build --config ${{ matrix.build_type }} --parallel
 
       - name: Run tests
-        run: ctest --test-dir build --build-config Release --output-on-failure --no-tests=error
+        run: ctest --test-dir build --build-config ${{ matrix.build_type }} --output-on-failure --no-tests=error

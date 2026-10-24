@@ -247,13 +247,16 @@ CTest command works across platforms without needing the executable's precise lo
 
 The GitHub Actions workflow in `.github/workflows/ci.yml` runs:
 
-- On pushes to `main`.
-- On pull requests targeting `main`.
+- On pushes to any branch.
+- On pull requests targeting `main`, `multichannel-support`, `spsc`, or `scheduler`.
 - When manually triggered through the repository's Actions tab.
 
-The workflow configures and builds the project in Debug with tests
-enabled on Ubuntu and Windows, then runs the registered Catch2 tests
-through CTest. Benchmark cases are disabled by default.
+The workflow configures and builds the project in Release with tests
+enabled on Ubuntu, Windows, and macOS, then runs the registered Catch2
+tests through CTest. Benchmark cases are explicitly disabled.
+
+The build configuration comes from the workflow's `build_type` matrix.
+A failed matrix job does not cancel the other jobs.
 
 Configuration errors, build errors, failing tests, or discovering no
 tests cause the corresponding CI job to fail.
