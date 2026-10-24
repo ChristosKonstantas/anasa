@@ -1,3 +1,6 @@
+#ifndef SCHEDULER_TEST_RIG_HPP
+#define SCHEDULER_TEST_RIG_HPP
+
 #include <cassert>
 
 #include "scheduler/Scheduler.hpp"
@@ -133,4 +136,7 @@ namespace anasa
             return settings;
         }
     };
+
 }// namespace anasa
+
+#endif // SCHEDULER_TEST_RIG_HPP

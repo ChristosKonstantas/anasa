@@ -1,105 +1,13 @@
 #include <algorithm>
-#include <atomic>
-#include <memory>
-#include <queue>
-#include <utility>
-#include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
-#include "audio/AudioBlockProcessor.hpp"
-#include "execution/IRenderExecutor.hpp"
-#include "execution/RenderTaskProcessor.hpp"
-#include "render/Renderer.hpp"
-#include "render/TestRenderKernel.hpp"
-#include "render/VersionTable.hpp"
-#include "scheduler/Scheduler.hpp"
+#include "scheduler/SchedulerPrebufferTestRig.hpp"
 #include "scheduler/SchedulerTestRig.hpp"
 
 namespace anasa
 {
-    namespace
-    {
-        // Complete accepted work inline so scheduling tests do not depend on timing.
-        class ImmediateRenderExecutor final : public IRenderExecutor
-        {
-        public:
-            explicit ImmediateRenderExecutor(const ITileRenderer& renderer)
-                : _processor(renderer)
-            {}
-
-            bool submit(RenderTask task) override
-            {
-                if (_processor.process(task, _stopRequested))
-                    _completedJobs.push(std::move(task.job));
-                return true;
-            }
-
-            bool popCompleted(std::shared_ptr<RenderJob>& job) override
-            {
-                if (_completedJobs.empty())
-                    return false;
-                job = std::move(_completedJobs.front());
-                _completedJobs.pop();
-                return true;
-            }
-
-            int workerCount() const override { return 1; }
-            int queuedTaskCount() override { return 0; }
-
-        private:
-            RenderTaskProcessor                    _processor;
-            std::atomic<bool>                      _stopRequested{false};
-            std::queue<std::shared_ptr<RenderJob>> _completedJobs;
-        };
-
-        class SchedulerPrebufferTestRig
-        {
-        public:
-            static constexpr int CHUNK_COUNT = 16;
-            static constexpr int TOTAL_FRAMES = CHUNK_COUNT * CHUNK_FRAMES;
-
-            explicit SchedulerPrebufferTestRig(const SchedulerSettings& settings)
-                : versions(CHUNK_COUNT),
-                  readyAudioQueue(READY_AUDIO_QUEUE_SLOTS, audioSettings.channelCount, audioSettings.audioBlockFrames),
-                  renderer(kernel, versions),
-                  executor(renderer),
-                  scheduler(settings, audioSettings, RenderSettings{}, TOTAL_FRAMES, state, versions, executor, readyAudioQueue),
-                  processor(audioSettings.audioBlockFrames, state, readyAudioQueue),
-                  output(audioSettings.channelCount, audioSettings.audioBlockFrames),
-                  outputChannels(audioSettings.channelCount)
-            {
-                for (int channel = 0; channel < audioSettings.channelCount; ++channel)
-                    outputChannels[channel] = output[channel].data();
-            }
-
-            void requestPlayAt(int frame)
-            {
-                SchedulerTestRig::handleCommand(scheduler, {CommandType::SetViewport, 0, 0});
-                SchedulerTestRig::handleCommand(scheduler, {CommandType::Seek, frame, 0});
-                SchedulerTestRig::handleCommand(scheduler, {CommandType::Play, 0, 0});
-            }
-
-            AudioProcessResult consumeBlock()
-            {
-                return processor.processBlock({outputChannels, audioSettings.audioBlockFrames});
-            }
-
-            AudioSettings           audioSettings;
-            SharedState             state;
-            VersionTable            versions;
-            SpscQueue<AudioBlock>   readyAudioQueue;
-            TestRenderKernel        kernel;
-            Renderer                renderer;
-            ImmediateRenderExecutor executor;
-            Scheduler               scheduler;
-            AudioBlockProcessor     processor;
-            AudioBuffer             output;
-            std::vector<float*>     outputChannels;
-        };
-    }
-
     TEST_CASE("Scheduler: prebuffer demand remains urgent outside the viewport")
     {
         SchedulerSettings settings;
