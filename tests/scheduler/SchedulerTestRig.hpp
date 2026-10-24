@@ -64,6 +64,12 @@ namespace anasa
             scheduler.dispatchPendingTiles();
         }
 
+        static int pendingTileCount(const Scheduler& scheduler)
+        {
+            assert(!scheduler._started);
+            return static_cast<int>(scheduler._pendingTiles.size());
+        }
+
         AudioSettings audioSettings;
         RenderSettings renderSettings;
         SchedulerSettings schedulerSettings;

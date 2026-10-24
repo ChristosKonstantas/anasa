@@ -68,6 +68,7 @@ namespace anasa
         void                                         updateBackgroundAdmission();
         void                                         scheduleRenderJobs();
         void                                         refreshPendingClassifications(int playheadFrame);
+        void                                         makeRoomForUrgentChunk();
         RenderClassification                         classifyChunk(int chunk, int playheadFrame) const;
         void                                         scheduleChunk(int chunk, int playheadFrame);
         void                                         dispatchPendingTiles();

@@ -22,7 +22,9 @@ namespace anasa
         // The caller must not resubmit an accepted tile of the same job.
         virtual bool submit(RenderTask task) = 0;
 
-        // Publishes each job once, after all tiles finish, including failed/cancelled tiles.
+        // Publishes a job once if a worker accounts for its final outstanding tile.
+        // Scheduler may discard unsubmitted tiles of cancelled jobs. If it accounts
+        // for the final tile, it retires that cancelled job directly instead.
         // Sample writes are visible on success. False leaves job unchanged.
         // Shutdown may discard queued tasks without publishing their jobs.
         virtual bool popCompleted(std::shared_ptr<RenderJob>& job) = 0;

@@ -406,6 +406,54 @@ namespace anasa
             _pendingTiles.push(std::move(tile));
     }
 
+    void Scheduler::makeRoomForUrgentChunk()
+    {
+        _reclassificationBuffer.clear();
+
+        // Extract in priority order so reverse traversal visits the least important work first.
+        while (!_pendingTiles.empty())
+        {
+            _reclassificationBuffer.push_back(_pendingTiles.top());
+            _pendingTiles.pop();
+        }
+
+        int retainedTiles = static_cast<int>(std::count_if(_reclassificationBuffer.begin(), _reclassificationBuffer.end(),
+            [](const PendingRenderTile& tile) { return !tile.job->cancelled.load(std::memory_order_relaxed); }));
+
+        for (std::vector<PendingRenderTile>::reverse_iterator tile = _reclassificationBuffer.rbegin();
+             tile != _reclassificationBuffer.rend() && retainedTiles + TILES_PER_CHUNK > _settings.maxPendingTiles;
+             ++tile
+            )
+        {
+            if (tile->classification.priority == RenderPriority::Urgent || tile->job->cancelled.load(std::memory_order_relaxed))
+                continue;
+
+            // Cancel the whole job: keeping only some of its pending tiles cannot produce a valid chunk.
+            tile->job->cancelled.store(true, std::memory_order_relaxed);
+            for (const PendingRenderTile& candidate : _reclassificationBuffer)
+            {
+                if (candidate.job == tile->job)
+                    --retainedTiles;
+            }
+        }
+
+        for (PendingRenderTile& tile : _reclassificationBuffer)
+        {
+            if (tile.job->cancelled.load(std::memory_order_relaxed))
+            {
+                // Retire only unsubmitted tiles. Workers still account for their accepted tiles.
+                const int previousTilesRemaining = tile.job->tilesRemaining.fetch_sub(1, std::memory_order_acq_rel);
+                assert(previousTilesRemaining > 0);
+                if (previousTilesRemaining == 1)
+                    _activeJobs.finish(tile.job);
+            }
+            else
+                _pendingTiles.push(std::move(tile));
+        }
+
+        _reclassificationBuffer.clear();
+    }
+
     RenderClassification Scheduler::classifyChunk(int chunk, int playheadFrame) const
     {
         if (chunk < 0 || chunk >= _chunkCount)
@@ -459,6 +507,10 @@ namespace anasa
 
         const RenderClassification classification = classifyChunk(chunk, playheadFrame);
         const int queueLimit = pendingTileLimit(classification.priority);
+
+        if (_settings.policyType == SchedulingPolicyType::Priority && classification.priority == RenderPriority::Urgent &&
+            static_cast<int>(_pendingTiles.size()) + TILES_PER_CHUNK > queueLimit)
+            makeRoomForUrgentChunk();
 
         if (static_cast<int>(_pendingTiles.size()) + TILES_PER_CHUNK > queueLimit)
             return;
