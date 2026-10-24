@@ -42,12 +42,12 @@ flowchart TD
     Control -->|"Engine::post() calls Scheduler::post()"| CommandQueue
     CommandQueue -->|"Scheduler::readCommands()"| Scheduler
 
-    ExecutorQueue["Bounded SPMC FIFO: _renderTasksQueue"]
+    ExecutorQueue["Bounded SPMC FIFO (mutex): _renderTasksQueue"]
     Workers["Executor workers: Executor::workerLoop()"]
     Render["Render tile into RenderJob::samples"]
-    CompletionQueue["MPSC completion queue: _completedJobsQueue"]
+    CompletionQueue["MPSC completion queue (mutex): _completedJobsQueue"]
 
-        Classify["Classify chunks: classifyChunk()"]
+    Classify["Classify chunks: classifyChunk()"]
     Pending["Scheduler priority queue: _pendingTiles"]
 
     Scheduler -->|"scheduleRenderJobs() calls scheduleChunk()"| Classify
@@ -55,17 +55,17 @@ flowchart TD
     Scheduler -->|"refreshPendingClassifications() updates queued priorities"| Pending
     Pending -->|"dispatchPendingTiles() calls Executor::submit()"| ExecutorQueue
     ExecutorQueue -->|"Move front RenderTask, then pop"| Workers
-    Workers -->|"Renderer::renderTile()"| Render
-    Render -->|"Worker decrements tilesRemaining and final tile queues job"| CompletionQueue
-    Admission["Background admission: _backgroundAllowed"]
+    Workers -->|"RenderTaskProcessor::process() calls Renderer::renderTile()"| Render
+    Render -->|"Worker publishes the job if process() accounts for its final tile"| CompletionQueue
+    Admission["BackgroundRenderGate: _backgroundGate"]
 
-    Scheduler -->|"updateBackgroundAdmission():(priority) low/high water thresholds"| Admission
+    Scheduler -->|"updateBackgroundAdmission(): Priority low/high water thresholds"| Admission
     Admission -.->|"Controls background dispatch"| Pending
-    Cache["Scheduler-owned cache: _cache"]
+    Cache["Scheduler-owned RenderCache: _cache"]
     ReadyQueue["SPSC ready-audio queue: _readyAudioQueue"]
-    Audio["Audio thread: AudioBlockProcessor::processBlock()"]
+    Audio["AudioSimulator thread: AudioBlockProcessor::processBlock()"]
 
-    Cache -->|"feedAudioQueue() copies ordered blocks using pushWith()"| ReadyQueue
+    Cache -->|"TimelineAudioPublisher::publish() copies ordered blocks using pushWith()"| ReadyQueue
     ReadyQueue -->|"front(): pop consumed or outdated blocks"| Audio
 
     Shared["SharedState atomics: _sharedState"]
@@ -79,13 +79,15 @@ flowchart TD
 
     Versions -->|"RenderCancellation::shouldCancel()"| Render
 
-       Collect["Scheduler::collectFinishedJobs()"]
+    Collect["Scheduler::collectFinishedJobs()"]
     Invalidate["Scheduler::invalidateVersions()"]
+    Retire["Retire cancelled job: ActiveRenderJobs::finish()"]
 
     Scheduler -->|"Collect completions"| Collect
     CompletionQueue -->|"Executor::popCompleted()"| Collect
-    Versions -.->|"Check current chunk version"| Collect
-    Collect -->|"Accept valid job and copy sample values"| Cache
+    Versions -.->|"RenderCache checks current chunk version"| Cache
+    Collect -->|"ActiveRenderJobs::finish() accepts; RenderCache::store() validates and copies"| Cache
+    Pending -.->|"Scheduler discards a cancelled job's final outstanding tile"| Retire
     Scheduler -->|"Process Edit command"| Invalidate
     Invalidate -->|"Bump affected chunk versions"| Versions
     classDef thread stroke-width:3px;
