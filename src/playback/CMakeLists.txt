@@ -7,4 +7,6 @@ anasa_add_module(
         PlaybackProtocol.cpp
         PlaybackController.hpp
         PlaybackController.cpp
+        BackgroundRenderGate.hpp
+        BackgroundRenderGate.cpp
 )

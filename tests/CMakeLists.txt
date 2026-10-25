@@ -12,6 +12,8 @@ if(BUILD_TESTS)
         render/SyntheticRenderKernelTests.cpp
         render/RenderCancellationTests.cpp
         execution/TestTileRenderer.cpp
+        execution/ImmediateRenderExecutor.cpp
+        execution/ControlledRenderExecutor.cpp
         execution/RenderTaskProcessorTests.cpp
         execution/ExecutorContractTests.cpp
         execution/ExecutorTests.cpp
@@ -20,9 +22,18 @@ if(BUILD_TESTS)
         audio/AudioBufferTests.cpp
         playback/PlaybackProtocolTests.cpp
         playback/PlaybackControllerTests.cpp
+        playback/BackgroundRenderGateTests.cpp
         scheduler/SchedulingPolicyTests.cpp
+        scheduler/SchedulerTestRig.hpp
+        scheduler/SchedulerPrebufferTestRig.hpp
+        scheduler/SchedulerAdmissionTestRig.hpp
         scheduler/SchedulerIntegrationTests.cpp
         scheduler/SchedulerBoundaryTests.cpp
+        scheduler/SchedulerPrebufferTests.cpp
+        scheduler/SchedulerAdmissionTests.cpp
+        scheduler/TimelineAudioPublisherTests.cpp
+        scheduler/RenderCacheTests.cpp
+        scheduler/ActiveRenderJobsTests.cpp
         engine/EngineTests.cpp
     )
 

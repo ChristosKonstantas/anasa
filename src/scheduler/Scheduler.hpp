@@ -21,6 +21,10 @@
 #include "utils/queues/SpscQueue.hpp"
 #include "playback/PlaybackProtocol.hpp"
 #include "playback/PlaybackController.hpp"
+#include "playback/BackgroundRenderGate.hpp"
+#include "scheduler/TimelineAudioPublisher.hpp"
+#include "scheduler/RenderCache.hpp"
+#include "scheduler/ActiveRenderJobs.hpp"
 
 namespace anasa
 {
@@ -64,6 +68,7 @@ namespace anasa
         void                                         updateBackgroundAdmission();
         void                                         scheduleRenderJobs();
         void                                         refreshPendingClassifications(int playheadFrame);
+        void                                         makeRoomForUrgentChunk();
         RenderClassification                         classifyChunk(int chunk, int playheadFrame) const;
         void                                         scheduleChunk(int chunk, int playheadFrame);
         void                                         dispatchPendingTiles();
@@ -76,6 +81,7 @@ namespace anasa
         int                                          readyLeadBlocks() const;
         bool                                         chunkIntersectsViewport(int chunk) const;
         int                                          pendingTileLimit(RenderPriority priority) const;
+        int                                          urgentChunkEnd(int playheadFrame) const;
 
         const SchedulerSettings                      _settings;
         const int                                    _audioBlockFrames;
@@ -87,10 +93,11 @@ namespace anasa
         SharedState&                                 _sharedState;
         PlaybackProtocol                             _playbackProtocol;
         PlaybackController                           _playbackController;
+        BackgroundRenderGate                         _backgroundGate;
+
         VersionTable&                                _versionTable;
         IRenderExecutor&                             _executor;
-        SpscQueue<AudioBlock>&                       _readyAudioQueue;
-             
+        TimelineAudioPublisher                       _audioPublisher;             
         SpscQueue<Command>                           _commandQueue;
 
         std::priority_queue<     
@@ -99,20 +106,19 @@ namespace anasa
             SchedulingPolicyCompare>                 _pendingTiles;
              
         std::vector<PendingRenderTile>               _reclassificationBuffer;
-        std::vector<CacheEntry>                      _cache;
-        std::vector<std::shared_ptr<RenderJob>>      _activeJobs;
+        RenderCache                                  _cache;
+        ActiveRenderJobs                             _activeJobs;
              
         std::thread                                  _schedulerThread;
         std::atomic<bool>                            _stopRequested;
              
         bool                                         _started;
-        bool                                         _backgroundAllowed;
         bool                                         _pendingClassificationsDirty;
              
         int                                          _viewportFirstFrame;
         int                                          _viewportLastFrame;
         int                                          _lastClassifiedPlayheadChunk;
-        int                                          _nextFrameToPublish;
+        int                                          _lastClassifiedUrgentChunkEnd;
         int                                          _timelineScanCursorInChunks;
              
         long long                                    _nextTileSequence;        

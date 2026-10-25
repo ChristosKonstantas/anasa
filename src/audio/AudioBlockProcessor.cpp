@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <limits>
 
 namespace anasa
 {
@@ -77,6 +78,9 @@ namespace anasa
         }
 
         if (!_sharedState.playing.load(std::memory_order_acquire))
+            return {};
+        
+        if (_audioState.expectedBlockStartFrame > std::numeric_limits<int>::max() - _blockFrames)
             return {};
 
         const bool isExactBlock =

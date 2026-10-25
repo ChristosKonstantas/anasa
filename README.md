@@ -42,12 +42,12 @@ flowchart TD
     Control -->|"Engine::post() calls Scheduler::post()"| CommandQueue
     CommandQueue -->|"Scheduler::readCommands()"| Scheduler
 
-    ExecutorQueue["Bounded SPMC FIFO: _renderTasksQueue"]
+    ExecutorQueue["Bounded SPMC FIFO (mutex): _renderTasksQueue"]
     Workers["Executor workers: Executor::workerLoop()"]
     Render["Render tile into RenderJob::samples"]
-    CompletionQueue["MPSC completion queue: _completedJobsQueue"]
+    CompletionQueue["MPSC completion queue (mutex): _completedJobsQueue"]
 
-        Classify["Classify chunks: classifyChunk()"]
+    Classify["Classify chunks: classifyChunk()"]
     Pending["Scheduler priority queue: _pendingTiles"]
 
     Scheduler -->|"scheduleRenderJobs() calls scheduleChunk()"| Classify
@@ -55,17 +55,17 @@ flowchart TD
     Scheduler -->|"refreshPendingClassifications() updates queued priorities"| Pending
     Pending -->|"dispatchPendingTiles() calls Executor::submit()"| ExecutorQueue
     ExecutorQueue -->|"Move front RenderTask, then pop"| Workers
-    Workers -->|"Renderer::renderTile()"| Render
-    Render -->|"Worker decrements tilesRemaining and final tile queues job"| CompletionQueue
-    Admission["Background admission: _backgroundAllowed"]
+    Workers -->|"RenderTaskProcessor::process() calls Renderer::renderTile()"| Render
+    Render -->|"Worker publishes the job if process() accounts for its final tile"| CompletionQueue
+    Admission["BackgroundRenderGate: _backgroundGate"]
 
-    Scheduler -->|"updateBackgroundAdmission():(priority) low/high water thresholds"| Admission
+    Scheduler -->|"updateBackgroundAdmission(): Priority low/high water thresholds"| Admission
     Admission -.->|"Controls background dispatch"| Pending
-    Cache["Scheduler-owned cache: _cache"]
+    Cache["Scheduler-owned RenderCache: _cache"]
     ReadyQueue["SPSC ready-audio queue: _readyAudioQueue"]
-    Audio["Audio thread: AudioBlockProcessor::processBlock()"]
+    Audio["AudioSimulator thread: AudioBlockProcessor::processBlock()"]
 
-    Cache -->|"feedAudioQueue() copies ordered blocks using pushWith()"| ReadyQueue
+    Cache -->|"TimelineAudioPublisher::publish() copies ordered blocks using pushWith()"| ReadyQueue
     ReadyQueue -->|"front(): pop consumed or outdated blocks"| Audio
 
     Shared["SharedState atomics: _sharedState"]
@@ -79,13 +79,15 @@ flowchart TD
 
     Versions -->|"RenderCancellation::shouldCancel()"| Render
 
-       Collect["Scheduler::collectFinishedJobs()"]
+    Collect["Scheduler::collectFinishedJobs()"]
     Invalidate["Scheduler::invalidateVersions()"]
+    Retire["Retire cancelled job: ActiveRenderJobs::finish()"]
 
     Scheduler -->|"Collect completions"| Collect
     CompletionQueue -->|"Executor::popCompleted()"| Collect
-    Versions -.->|"Check current chunk version"| Collect
-    Collect -->|"Accept valid job and copy sample values"| Cache
+    Versions -.->|"RenderCache checks current chunk version"| Cache
+    Collect -->|"ActiveRenderJobs::finish() accepts; RenderCache::store() validates and copies"| Cache
+    Pending -.->|"Scheduler discards a cancelled job's final outstanding tile"| Retire
     Scheduler -->|"Process Edit command"| Invalidate
     Invalidate -->|"Bump affected chunk versions"| Versions
     classDef thread stroke-width:3px;
@@ -98,8 +100,8 @@ flowchart TD
 The diagram shows how commands, rendering work, and audio move between runtime threads. Scheduler coordinates the pipeline. Executor workers render tiles concurrently. AudioSimulator drives AudioBlockProcessor to consume published audio independently. Thicker borders identify threads. The heavier border identifies the Executor worker pool.
 
 - **Command handling:** The control thread posts commands through `_commandQueue`. Scheduler processes them to update playback, viewport, and content state.
-- **Work selection:** Scheduler classifies chunks as urgent, visible, or background and places their tiles in `_pendingTiles`. It refreshes classifications when playback or viewport changes require it. In Priority mode, low/high water thresholds control background dispatch while playback is requested.
-- **Parallel rendering:** Selected tiles enter the bounded `_renderTasksQueue`. Workers take tasks and render separate regions of a shared `RenderJob::samples` buffer. Once all tile tasks have been accounted for, the final task places the job in `_completedJobsQueue`, even if rendering was cancelled. Jobs abandoned during shutdown may never produce a completion.
+- **Work selection:** Scheduler classifies chunks as urgent, visible, or background and places their tiles in `_pendingTiles`. It refreshes classifications when playback or viewport changes require it. In Priority mode, low/high water thresholds control background dispatch while playback is requested. If urgent work cannot fit, Scheduler reclaims cancelled pending tiles and cancels lower-priority jobs, starting with the least important, to admit a complete urgent chunk. The pending-tile limit still applies. FIFO keeps its existing admission order.
+- **Parallel rendering:** Selected tiles enter the bounded `_renderTasksQueue`. Workers take tasks and render separate regions of a shared `RenderJob::samples` buffer. Each tile is accounted for once: by a worker after submission, or by Scheduler if discarded before submission after cancellation. If a worker accounts for the final tile, it places the job in `_completedJobsQueue`; if Scheduler accounts for the final tile of a cancelled job, it retires that job directly. Jobs abandoned during shutdown may never produce a completion.
 - **Completion and publication:** `collectFinishedJobs()` checks job identity, cancellation, and version before copying accepted samples into `_cache`. `feedAudioQueue()` copies cached samples into `_readyAudioQueue` as generation-tagged blocks in timeline order.
 - **Audio consumption:** AudioBlockProcessor consumes blocks matching its current generation and expected position, discards outdated blocks, and reports playback progress through _sharedState. During active playback, a missing required block produces silence, reports an underrun, and advances the playback cursor.
 - **Transport and invalidation:** Shared atomics communicate playback state, seek targets, generations, and cursor acknowledgements. Edits bump affected chunk versions so Renderer can abandon obsolete work and Scheduler can reject obsolete results.
@@ -247,13 +249,16 @@ CTest command works across platforms without needing the executable's precise lo
 
 The GitHub Actions workflow in `.github/workflows/ci.yml` runs:
 
-- On pushes to `main`.
-- On pull requests targeting `main`.
+- On pushes to any branch.
+- On pull requests targeting `main`, `multichannel-support`, `spsc`, or `scheduler`.
 - When manually triggered through the repository's Actions tab.
 
-The workflow configures and builds the project in Debug with tests
-enabled on Ubuntu and Windows, then runs the registered Catch2 tests
-through CTest. Benchmark cases are disabled by default.
+The workflow configures and builds the project in Release with tests
+enabled on Ubuntu, Windows, and macOS, then runs the registered Catch2
+tests through CTest. Benchmark cases are explicitly disabled.
+
+The build configuration comes from the workflow's `build_type` matrix.
+A failed matrix job does not cancel the other jobs.
 
 Configuration errors, build errors, failing tests, or discovering no
 tests cause the corresponding CI job to fail.

@@ -16,7 +16,7 @@ namespace anasa
 
         int               chunk = 0;
         int               version = 0;
-        std::atomic<int>  tilesRemaining{TILES_PER_CHUNK};
+        std::atomic<int>  tilesRemaining{TILES_PER_CHUNK}; // Tiles not yet finished by workers or discarded by Scheduler after cancellation.
         std::atomic<bool> cancelled{false};
         
         // Storage dimensions remain fixed while workers render disjoint frame ranges.

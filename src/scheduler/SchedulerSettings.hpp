@@ -15,7 +15,7 @@ namespace anasa
         int prebufferBlocks     = 16;
         int lowWaterBlocks      = 16;
         int highWaterBlocks     = 48;
-        int urgentChunks        = 8;
+        int urgentChunks        = 8; // Minimum urgent window. Expands to cover prebuffer demand.
 
         int maxPendingTiles     = 256;
         int urgentReservedTiles = 64;

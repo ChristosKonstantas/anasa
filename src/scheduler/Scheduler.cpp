@@ -10,7 +10,6 @@
 #include <utility>
 #include <vector>
 
-#include "audio/AudioConstants.hpp"
 #include "playback/PlaybackTimeline.hpp"
 #include "render/RenderConstants.hpp"
 #include "render/RenderFrameUtils.hpp"
@@ -28,21 +27,22 @@ namespace anasa
           _sharedState(sharedState),
           _playbackProtocol(totalFrames, sharedState),
           _playbackController(schedulerSettings.prebufferBlocks, schedulerSettings.rebufferOnEdit, sharedState.playing),
+          _backgroundGate(schedulerSettings.lowWaterBlocks, schedulerSettings.highWaterBlocks),
           _versionTable(versionTable),
           _executor(executor),
-          _readyAudioQueue(readyAudioQueue),
+          _audioPublisher(_audioBlockFrames, _channelCount, _totalFrames, readyAudioQueue),
           _commandQueue(validateCommandQueueSlots(schedulerSettings.commandQueueSlots)),
           _pendingTiles(SchedulingPolicyCompare(createSchedulingPolicy(schedulerSettings.policyType)), makeReservedTileStorage(_settings.maxPendingTiles)),
           _reclassificationBuffer(makeReservedTileStorage(_settings.maxPendingTiles)),
-          _activeJobs(_chunkCount),
+          _cache(_channelCount, _totalFrames, _versionTable),
+          _activeJobs(_channelCount, _chunkCount),
           _stopRequested(false),
           _started(false),
-          _backgroundAllowed(true),
           _pendingClassificationsDirty(true),
           _viewportFirstFrame(0),
           _viewportLastFrame(0),
           _lastClassifiedPlayheadChunk(-1),
-          _nextFrameToPublish(0),
+          _lastClassifiedUrgentChunkEnd(-1),
           _timelineScanCursorInChunks(0),
           _nextTileSequence(0)
     {
@@ -50,29 +50,8 @@ namespace anasa
         if (audioSettings.sampleRate <= 0)
             throw std::invalid_argument("sampleRate must be greater than zero");
 
-        if (_channelCount <= 0)
-            throw std::invalid_argument("channelCount must be greater than zero");
-
-        if (_audioBlockFrames <= 0)
-            throw std::invalid_argument("audioBlockFrames must be greater than zero");
-
-        if (_audioBlockFrames > MAX_AUDIO_BLOCK_FRAMES)
-            throw std::invalid_argument("audioBlockFrames exceeds MAX_AUDIO_BLOCK_FRAMES");
-
-        if (CHUNK_FRAMES % _audioBlockFrames != 0)
-            throw std::invalid_argument("audioBlockFrames must divide CHUNK_FRAMES");
-
         if (_contextFrames < 0)
             throw std::invalid_argument("contextFrames must not be negative");
-
-        if (_totalFrames % _audioBlockFrames != 0)
-            throw std::invalid_argument("totalFrames must be divisible by audioBlockFrames - current engine does not support a partial final audio block");
-
-        if (_settings.lowWaterBlocks < 0)
-            throw std::invalid_argument("lowWaterBlocks must not be negative");
-
-        if (_settings.highWaterBlocks < _settings.lowWaterBlocks)
-            throw std::invalid_argument("highWaterBlocks must not be smaller than lowWaterBlocks");
 
         if (_settings.urgentChunks <= 0)
             throw std::invalid_argument("urgentChunks must be greater than zero");
@@ -86,7 +65,7 @@ namespace anasa
         if (_settings.urgentReservedTiles < 0 || _settings.urgentReservedTiles > _settings.maxPendingTiles)
             throw std::invalid_argument("urgentReservedTiles must be between zero and maxPendingTiles");
         
-        const int readyQueueCapacity = static_cast<int>(_readyAudioQueue.capacity());
+        const int readyQueueCapacity = static_cast<int>(readyAudioQueue.capacity());
 
         if (_settings.prebufferBlocks > readyQueueCapacity)
             throw std::invalid_argument("prebufferBlocks exceeds ready-audio queue capacity");
@@ -96,16 +75,6 @@ namespace anasa
 
         if (_settings.urgentReservedTiles < TILES_PER_CHUNK)
             throw std::invalid_argument("urgentReservedTiles must hold one complete chunk");
-
-        const int expectedChunkCount = 1 + (_totalFrames - 1) / CHUNK_FRAMES;
-
-        if (_chunkCount != expectedChunkCount)
-            throw std::invalid_argument("VersionTable size does not match timeline chunk count");
-        
-        _cache.reserve(static_cast<std::size_t>(_chunkCount));
-
-        for (int chunk = 0; chunk < _chunkCount; ++chunk)
-            _cache.emplace_back(_channelCount);
 
         _viewportLastFrame = audioSettings.sampleRate > _totalFrames / 2 ? _totalFrames : 2 * audioSettings.sampleRate;
     }
@@ -140,13 +109,12 @@ namespace anasa
 
         _stopRequested.store(false, std::memory_order_release);
         _playbackController.resetPlayRequest();
-        _backgroundAllowed = true;
+        _backgroundGate.reset();
         _pendingClassificationsDirty = true;
         _lastClassifiedPlayheadChunk = -1;
-        _nextFrameToPublish = _playbackProtocol.currentFrame();
-
-        assert(_nextFrameToPublish % _audioBlockFrames == 0 || _nextFrameToPublish == _totalFrames);
-
+        _lastClassifiedUrgentChunkEnd = -1;
+        _audioPublisher.reset(_playbackProtocol.currentFrame());
+        
         _started = true;
 
         try
@@ -184,17 +152,10 @@ namespace anasa
         while (!_commandQueue.isEmpty())
             _commandQueue.pop();
 
-        for (std::shared_ptr<RenderJob>& job : _activeJobs)
-        {
-            if (job != nullptr)
-            {
-                job->cancelled.store(true, std::memory_order_relaxed);
-                job.reset();
-            }
-        }
+        _activeJobs.cancelAll();
 
         _playbackController.resetPlayRequest();
-        _backgroundAllowed = true;
+        _backgroundGate.reset();
         _timelineScanCursorInChunks = 0;
         _nextTileSequence = 0;
         _started = false;
@@ -290,7 +251,7 @@ namespace anasa
 
             case CommandType::SetViewport:
             {
-                _viewportFirstFrame = clampTimelineFrame(command.firstFrame, _totalFrames);
+                _viewportFirstFrame = clampTimelineBoundary(command.firstFrame, _totalFrames);
 
                 _viewportLastFrame = clampTimelineBoundary(std::max(command.firstFrame, command.lastFrame), _totalFrames);
 
@@ -321,40 +282,8 @@ namespace anasa
 
         while (_executor.popCompleted(job))
         {
-            if (job == nullptr)
-                continue;
-
-            const int chunk = job->chunk;
-
-            if (chunk < 0 || chunk >= _chunkCount)
-                continue;
-
-            std::shared_ptr<RenderJob>& activeJob = _activeJobs[chunk];
-
-            // Ignore completion from a job that has already been replaced.
-            if (activeJob != job)
-                continue;
-
-            if (job->cancelled.load(std::memory_order_relaxed) || _versionTable.get(chunk) != job->version ||
-                job->samples.channelCount() != _channelCount || job->samples.frameCount() != CHUNK_FRAMES)
-            {
-                activeJob.reset();
-                continue;
-            }
-            CacheEntry& cacheForCurrentChunk = _cache[chunk];
-
-            for (int channel = 0; channel < _channelCount; ++channel)
-            {
-                const auto source = job->samples[channel];
-                const auto destination = cacheForCurrentChunk.samples[channel];
-
-                for (int sample = 0; sample < job->samples.frameCount(); ++sample)
-                    destination[sample] = source[sample];
-            }
-
-            _cache[chunk].version = job->version;
-
-            activeJob.reset();
+            if (_activeJobs.finish(job))
+                _cache.store(job->chunk, job->version, job->samples);
         }
     }
 
@@ -364,7 +293,7 @@ namespace anasa
 
         if (nextUnconsumedFrame >= _totalFrames)
         {
-            _nextFrameToPublish = _totalFrames;
+            _audioPublisher.reset(_totalFrames);
 
             if (_playbackController.pause())
                 _pendingClassificationsDirty = true;
@@ -372,71 +301,21 @@ namespace anasa
             return;
         }
 
-        // If playback already passed unpublished audio, late audio is useless.
-        if (_nextFrameToPublish < nextUnconsumedFrame)
-            _nextFrameToPublish = nextUnconsumedFrame;
-
         const int generation = _sharedState.generation.load(std::memory_order_acquire);
+        _audioPublisher.publish(nextUnconsumedFrame, generation, _cache);
 
-        while (_nextFrameToPublish <= _totalFrames - _audioBlockFrames)
-        {
-            const int chunk = frameToChunk(_nextFrameToPublish);
-
-            // Publication is strictly ordered. Never skip a missing chunk. Postpone publication until the required chunk becomes available.
-            if (!cacheIsCurrent(chunk))
-                break;
-
-            const int blockFirstFrame = _nextFrameToPublish; // remember it's aligned to first frame of the audio block (see Seek)
-            const int chunkOffset = _nextFrameToPublish - firstFrameOfChunk(chunk); // locate the block's first frame within the chunk
-
-            assert(chunkOffset >= 0);
-            assert(chunkOffset + _audioBlockFrames <= CHUNK_FRAMES);
-
-            const bool pushed = _readyAudioQueue.pushWith([this, generation, blockFirstFrame, chunk, chunkOffset](AudioBlock& block)
-            {
-                assert(block.samples.channelCount() == _channelCount);
-                assert(block.samples.frameCount() >= _audioBlockFrames);
-
-                block.generation = generation;
-                block.firstFrame = blockFirstFrame;
-                block.frameCount = _audioBlockFrames;
-
-                const CacheEntry& cacheForCurrentChunk = _cache[chunk];
-
-                for (int channel = 0; channel < _channelCount; ++channel)
-                {
-                    const auto source = cacheForCurrentChunk.samples[channel];
-                    const auto destination = block.samples[channel];
-
-                    for (int frame = 0; frame < _audioBlockFrames; ++frame)
-                        destination[frame] = source[chunkOffset + frame];
-                }
-                
-            });
-
-            if (!pushed)
-                break;
-
-            _nextFrameToPublish += _audioBlockFrames;
-        }
-
-        _playbackController.startIfReady(readyLeadBlocks(), _nextFrameToPublish >= _totalFrames);
+        _playbackController.startIfReady(readyLeadBlocks(), _audioPublisher.entireRemainderPublished());
     }
 
     void Scheduler::updateBackgroundAdmission()
     {
         if (_settings.policyType == SchedulingPolicyType::Fifo || !_playbackController.playRequested())
         {
-            _backgroundAllowed = true;
+            _backgroundGate.reset();
             return;
         }
 
-        const int leadBlocks = readyLeadBlocks();
-
-        if (leadBlocks < _settings.lowWaterBlocks)
-            _backgroundAllowed = false;
-        else if (leadBlocks >= _settings.highWaterBlocks)
-            _backgroundAllowed = true;
+        _backgroundGate.observe(readyLeadBlocks());
     }
 
     void Scheduler::scheduleRenderJobs()
@@ -444,9 +323,10 @@ namespace anasa
         const int playheadFrame = _playbackProtocol.currentFrame();
 
         const int playheadChunk = playheadFrame < _totalFrames ? frameToChunk(playheadFrame) : _chunkCount;
+        const int urgentEndChunk = urgentChunkEnd(playheadFrame);
 
         // Rebuild only when priorities may have materially changed.
-        const bool classificationChanged = _pendingClassificationsDirty || playheadChunk != _lastClassifiedPlayheadChunk;
+        const bool classificationChanged = _pendingClassificationsDirty || playheadChunk != _lastClassifiedPlayheadChunk || urgentEndChunk != _lastClassifiedUrgentChunkEnd;
 
         // Refresh priority, deadline and distance for _pendingTiles. This is required for Priority scheduling, not for FIFO scheduling.
         if (_settings.policyType == SchedulingPolicyType::Priority && classificationChanged)
@@ -454,14 +334,12 @@ namespace anasa
 
         _pendingClassificationsDirty = false;
         _lastClassifiedPlayheadChunk = playheadChunk;
+        _lastClassifiedUrgentChunkEnd = urgentEndChunk;
 
         // (1) Playback-near chunks (urgent).
         if (_playbackController.playRequested() && playheadFrame < _totalFrames)
         {
-            const int firstChunk = frameToChunk(playheadFrame);
-            const int lastChunk = firstChunk + std::min(_settings.urgentChunks, _chunkCount - firstChunk);
-
-            for (int chunk = firstChunk; chunk < lastChunk; ++chunk)
+            for (int chunk = playheadChunk; chunk < urgentEndChunk; ++chunk)
                 scheduleChunk(chunk, playheadFrame);
         }
 
@@ -528,6 +406,54 @@ namespace anasa
             _pendingTiles.push(std::move(tile));
     }
 
+    void Scheduler::makeRoomForUrgentChunk()
+    {
+        _reclassificationBuffer.clear();
+
+        // Extract in priority order so reverse traversal visits the least important work first.
+        while (!_pendingTiles.empty())
+        {
+            _reclassificationBuffer.push_back(_pendingTiles.top());
+            _pendingTiles.pop();
+        }
+
+        int retainedTiles = static_cast<int>(std::count_if(_reclassificationBuffer.begin(), _reclassificationBuffer.end(),
+            [](const PendingRenderTile& tile) { return !tile.job->cancelled.load(std::memory_order_relaxed); }));
+
+        for (std::vector<PendingRenderTile>::reverse_iterator tile = _reclassificationBuffer.rbegin();
+             tile != _reclassificationBuffer.rend() && retainedTiles + TILES_PER_CHUNK > _settings.maxPendingTiles;
+             ++tile
+            )
+        {
+            if (tile->classification.priority == RenderPriority::Urgent || tile->job->cancelled.load(std::memory_order_relaxed))
+                continue;
+
+            // Cancel the whole job: keeping only some of its pending tiles cannot produce a valid chunk.
+            tile->job->cancelled.store(true, std::memory_order_relaxed);
+            for (const PendingRenderTile& candidate : _reclassificationBuffer)
+            {
+                if (candidate.job == tile->job)
+                    --retainedTiles;
+            }
+        }
+
+        for (PendingRenderTile& tile : _reclassificationBuffer)
+        {
+            if (tile.job->cancelled.load(std::memory_order_relaxed))
+            {
+                // Retire only unsubmitted tiles. Workers still account for their accepted tiles.
+                const int previousTilesRemaining = tile.job->tilesRemaining.fetch_sub(1, std::memory_order_acq_rel);
+                assert(previousTilesRemaining > 0);
+                if (previousTilesRemaining == 1)
+                    _activeJobs.finish(tile.job);
+            }
+            else
+                _pendingTiles.push(std::move(tile));
+        }
+
+        _reclassificationBuffer.clear();
+    }
+
     RenderClassification Scheduler::classifyChunk(int chunk, int playheadFrame) const
     {
         if (chunk < 0 || chunk >= _chunkCount)
@@ -543,7 +469,7 @@ namespace anasa
         if (_playbackController.playRequested() && boundedPlayhead < _totalFrames)
         {
             const int firstUrgentChunk = frameToChunk(boundedPlayhead);
-            const int lastUrgentChunk = firstUrgentChunk + std::min(_settings.urgentChunks, _chunkCount - firstUrgentChunk);
+            const int lastUrgentChunk = urgentChunkEnd(boundedPlayhead);
 
             if (chunk >= firstUrgentChunk && chunk < lastUrgentChunk)
             {
@@ -576,28 +502,20 @@ namespace anasa
 
         const int version = _versionTable.get(chunk);
 
-        std::shared_ptr<RenderJob>& currentJob = _activeJobs[chunk];
-        
-        // this is well scheduled already, therefore no need to schedule again (not nullptr, version is the same, not cancelled)
-        if (currentJob != nullptr && currentJob->version == version && !currentJob->cancelled.load(std::memory_order_relaxed))
+        if (_activeJobs.hasCurrent(chunk, version))
             return;
 
         const RenderClassification classification = classifyChunk(chunk, playheadFrame);
         const int queueLimit = pendingTileLimit(classification.priority);
 
+        if (_settings.policyType == SchedulingPolicyType::Priority && classification.priority == RenderPriority::Urgent &&
+            static_cast<int>(_pendingTiles.size()) + TILES_PER_CHUNK > queueLimit)
+            makeRoomForUrgentChunk();
+
         if (static_cast<int>(_pendingTiles.size()) + TILES_PER_CHUNK > queueLimit)
             return;
 
-        if (currentJob != nullptr) // cancelled or version is different
-            currentJob->cancelled.store(true, std::memory_order_relaxed);
-
-        // now, activeJob will be replaced with a new job below
-        std::shared_ptr<RenderJob> jobToSchedule = std::make_shared<RenderJob>(_channelCount);
-
-        jobToSchedule->chunk = chunk;
-        jobToSchedule->version = version;
-        jobToSchedule->cancelled.store(false, std::memory_order_relaxed); // the only false store as it initializes a newly created unpublished job
-        jobToSchedule->tilesRemaining.store(TILES_PER_CHUNK, std::memory_order_relaxed);
+        const std::shared_ptr<RenderJob> jobToSchedule = _activeJobs.create(chunk, version);
 
         for (int tileIndex = 0; tileIndex < TILES_PER_CHUNK; ++tileIndex)
         {
@@ -610,8 +528,6 @@ namespace anasa
 
             _pendingTiles.push(std::move(tile));
         }
-
-        currentJob = std::move(jobToSchedule);
     }
 
     void Scheduler::dispatchPendingTiles()
@@ -620,9 +536,9 @@ namespace anasa
         {
             const PendingRenderTile& tile = _pendingTiles.top();
 
-            if (!_backgroundAllowed && tile.classification.priority == RenderPriority::Background)
+            if (!_backgroundGate.allowsBackground() && tile.classification.priority == RenderPriority::Background)
                 return;
-
+            
             RenderTask task;
             task.job = tile.job;
             task.tileIndex = tile.tileIndex;
@@ -645,7 +561,7 @@ namespace anasa
         assert(targetFrame % _audioBlockFrames == 0 || targetFrame == _totalFrames);
 
         _playbackProtocol.beginGeneration(targetFrame, suspendPlayback);
-        _nextFrameToPublish = targetFrame;
+        _audioPublisher.reset(targetFrame);
     }
 
     void Scheduler::invalidateVersions(int firstFrame, int lastFrame)
@@ -662,31 +578,28 @@ namespace anasa
         for (int chunk = firstChunk; chunk <= lastChunk; ++chunk)
         {
             _versionTable.bump(chunk);
-
-            if (_activeJobs[chunk] != nullptr)
-                _activeJobs[chunk]->cancelled.store(true, std::memory_order_relaxed);
+            _activeJobs.cancel(chunk);
         }
     }
 
     bool Scheduler::cacheIsCurrent(int chunk) const
     {
-        return _cache[chunk].version == _versionTable.get(chunk);
+        return _cache.findCurrent(chunk) != nullptr;
     }
 
     int Scheduler::readyLeadBlocks() const
     {
-        const int nextUnconsumedFrame = _playbackProtocol.currentFrame();
-
-        const int readyFrames = std::max(0, _nextFrameToPublish - nextUnconsumedFrame);
-
-        return readyFrames / _audioBlockFrames;
+        return _audioPublisher.readyLeadBlocks(_playbackProtocol.currentFrame());
     }
 
     bool Scheduler::chunkIntersectsViewport(int chunk) const
     {
+        if (_viewportFirstFrame >= _viewportLastFrame)
+            return false;
+
         const int chunkFirstFrame = firstFrameOfChunk(chunk);
         const int chunkLastFrame = chunkFirstFrame + std::min(CHUNK_FRAMES, _totalFrames - chunkFirstFrame);
-        
+
         // Both ranges are half-open:
         // chunk:    [chunkFirstFrame, chunkLastFrame)
         // viewport: [_viewportFirstFrame, _viewportLastFrame)
@@ -699,6 +612,24 @@ namespace anasa
             return _settings.maxPendingTiles;
 
         return _settings.maxPendingTiles - _settings.urgentReservedTiles;
+    }
+
+    int Scheduler::urgentChunkEnd(int playheadFrame) const
+    {
+        assert(playheadFrame >= 0 && playheadFrame <= _totalFrames);
+        if (playheadFrame == _totalFrames)
+            return _chunkCount;
+
+        const int firstChunk = frameToChunk(playheadFrame);
+        const int configuredEnd = firstChunk + std::min(_settings.urgentChunks, _chunkCount - firstChunk);
+        const int remainingBlocks = (_totalFrames - playheadFrame) / _audioBlockFrames;
+        const int prebufferFrames = std::min(_settings.prebufferBlocks, remainingBlocks) * _audioBlockFrames;
+        if (prebufferFrames == 0)
+            return configuredEnd;
+
+        // The exclusive end must include every chunk touched by the prebuffer range.
+        const int prebufferEnd = frameToChunk(playheadFrame + prebufferFrames - 1) + 1;
+        return std::max(configuredEnd, prebufferEnd);
     }
 
 } // namespace anasa
