@@ -79,7 +79,29 @@ namespace anasa
 
         REQUIRE(functions::waitUntil([&]{return !schedulerTestRig.sharedState.playing.load(std::memory_order_acquire);}));
     }
+    TEST_CASE("Scheduler: shutdown clears playback permission")
+    {
+        SchedulerTestRig rig;
+        rig.start();
+        REQUIRE(rig.scheduler.post({CommandType::Play, 0, 0}));
+        REQUIRE(functions::waitUntil([&]{return rig.sharedState.playing.load(std::memory_order_acquire);}));
 
+        SECTION("Owner stops the scheduler") {}
+        SECTION("Stop command requests shutdown")
+        {
+            REQUIRE(rig.scheduler.post({CommandType::Stop, 0, 0}));
+            REQUIRE(functions::waitUntil([&]{return rig.sharedState.stop.load(std::memory_order_acquire);}));
+        }
+        SECTION("Engine requests shutdown")
+        {
+            rig.sharedState.stop.store(true, std::memory_order_release);
+        }
+
+        rig.stop();
+        REQUIRE_FALSE(rig.sharedState.playing.load(std::memory_order_acquire));
+        REQUIRE_FALSE(rig.scheduler.post({CommandType::Play, 0, 0}));
+    }
+    
     TEST_CASE("Scheduler: Edit invalidates exactly the edited chunk when context is zero")
     {
         SchedulerTestRig schedulerTestRig;

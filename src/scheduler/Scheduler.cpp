@@ -197,6 +197,8 @@ namespace anasa
             // TODO: make this event-driven
             std::this_thread::sleep_for(1ms);
         }
+        
+        _playbackController.pause();
     }
 
     void Scheduler::readCommands()
