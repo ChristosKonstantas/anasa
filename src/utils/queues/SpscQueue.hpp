@@ -13,8 +13,9 @@ namespace anasa
 /*
 
  * One producer and one consumer only.
- * _write and _read are monotonically increasing logical cursors.
- * capacity, _read and _write are size_t: they can reach max possible object size in memory 
+ * _write and _read are unsigned logical counters that may wrap.
+ * Producer and consumer own separate physical slot positions.
+ * reset() and destruction require both threads to be stopped.
 
  * For more information check out this talk
  * https://www.youtube.com/watch?v=K3P_Lmq6pw0&t=764s
@@ -37,8 +38,6 @@ class SpscQueue : private Alloc // Empty Base Optimization
         SpscQueue(std::allocator_arg_t, Alloc const& alloc, std::size_t capacity, const Args&... args)
             : Alloc{alloc},
               _capacity(validateCapacity(capacity)),
-              _powerOfTwo(isPowerOfTwo(_capacity)),
-              _mask(_capacity - 1),
               _data{std::allocator_traits<Alloc>::allocate(*this, _capacity)}
         {
             /* Preconstruct all queue slots */
@@ -88,7 +87,8 @@ class SpscQueue : private Alloc // Empty Base Optimization
             if (isFull(write, read))
                 return false;
 
-            std::forward<Fill>(fill)(*element(write));
+            std::forward<Fill>(fill)(_data[_writeSlot]);
+            _writeSlot = nextSlot(_writeSlot);
 
             _write.store(write + 1, std::memory_order_release);
 
@@ -105,7 +105,7 @@ class SpscQueue : private Alloc // Empty Base Optimization
             if (isEmpty(write, read))
                 return nullptr;
 
-            return element(read);
+            return &_data[_readSlot];
         }
 
         const T* front() const
@@ -117,7 +117,7 @@ class SpscQueue : private Alloc // Empty Base Optimization
             if (isEmpty(write, read))
                 return nullptr;
 
-            return element(read);
+            return &_data[_readSlot];
         }
 
         /* Consumes the front object without copying it. */
@@ -129,6 +129,7 @@ class SpscQueue : private Alloc // Empty Base Optimization
             if (isEmpty(write, read))
                 return false;
 
+            _readSlot = nextSlot(_readSlot);
             _read.store(read + 1, std::memory_order_release);
 
             return true;
@@ -157,8 +158,11 @@ class SpscQueue : private Alloc // Empty Base Optimization
             return isFull(write, read);
         }
 
+        // No producer or consumer may access the queue during reset.
         void reset()
         {
+            _readSlot = 0;
+            _writeSlot = 0;
             _read.store(0, std::memory_order_relaxed);
             _write.store(0, std::memory_order_relaxed);
         }
@@ -175,25 +179,9 @@ class SpscQueue : private Alloc // Empty Base Optimization
             return write == read;
         }
 
-        T* element(std::size_t cursor)
+        std::size_t nextSlot(std::size_t slot) const noexcept
         {
-            if (_powerOfTwo)
-                return &_data[cursor & _mask]; // & is cheaper but capacity should be power of 2
-
-            return &_data[cursor % _capacity];
-        }
-
-        const T* element(std::size_t cursor) const
-        {
-            if (_powerOfTwo)
-                return &_data[cursor & _mask]; // & is cheaper but capacity should be power of 2
-
-            return &_data[cursor % _capacity];
-        }
-        
-        static bool isPowerOfTwo(std::size_t value)
-        {
-            return value != 0 && (value & (value - 1)) == 0;
+            return slot + 1 == _capacity ? 0 : slot + 1;
         }
 
         static std::size_t validateCapacity(std::size_t capacity)
@@ -204,15 +192,15 @@ class SpscQueue : private Alloc // Empty Base Optimization
             return capacity;
         }
 
-        std::size_t               _capacity;
-        const bool                _powerOfTwo;
-        const std::size_t         _mask;
-        T*                        _data{}; // heap storage for T objects
+    std::size_t               _capacity;
+    T*                        _data{}; // heap storage for T objects
 
-        alignas(std::hardware_destructive_interference_size)
-        std::atomic<std::size_t>  _write{0};
-        alignas(std::hardware_destructive_interference_size)
-        std::atomic<std::size_t>  _read{0};
+    alignas(std::hardware_destructive_interference_size)
+    std::atomic<std::size_t>  _write{0};
+    std::size_t               _writeSlot{0}; // producer only
+    alignas(std::hardware_destructive_interference_size)
+    std::atomic<std::size_t>  _read{0};
+    std::size_t               _readSlot{0}; // consumer only
 };
 
 } // namespace anasa
