@@ -17,7 +17,7 @@ namespace anasa
          _renderer(_renderKernel, _versionTable),
          _executor(_settings.executor, _renderer),
          _scheduler(_settings.scheduler, _settings.audio, _settings.render, _totalFrames, _sharedState, _versionTable, _executor, _readyAudioQueue),
-         _audioBlockProcessor(_settings.audio.audioBlockFrames, _sharedState, _readyAudioQueue),
+         _audioBlockProcessor(_settings.audio.audioBlockFrames, _totalFrames, _sharedState, _readyAudioQueue),
          _audioSimulator(_settings.audio, _sharedState.stop, _audioBlockProcessor),
          _started(false)
     {

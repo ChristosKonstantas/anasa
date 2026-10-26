@@ -101,7 +101,7 @@ namespace anasa
         REQUIRE_FALSE(rig.sharedState.playing.load(std::memory_order_acquire));
         REQUIRE_FALSE(rig.scheduler.post({CommandType::Play, 0, 0}));
     }
-    
+
     TEST_CASE("Scheduler: Edit invalidates exactly the edited chunk when context is zero")
     {
         SchedulerTestRig schedulerTestRig;
@@ -194,7 +194,7 @@ namespace anasa
 
         SchedulerTestRig rig(policy, channelCount);
         const int blockFrames = rig.audioSettings.audioBlockFrames;
-        AudioBlockProcessor processor(blockFrames, rig.sharedState, rig.readyAudioQueue);
+        AudioBlockProcessor processor(blockFrames, rig.TOTAL_FRAMES, rig.sharedState, rig.readyAudioQueue);
         AudioBuffer output(channelCount, blockFrames);
         std::vector<float*> channels(channelCount);
 

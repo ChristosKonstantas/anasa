@@ -8,6 +8,34 @@
 
 namespace anasa
 {
+    TEST_CASE("Scheduler: callbacks stop at the timeline end before the next scheduler iteration")
+    {
+        SchedulerSettings settings;
+        settings.policyType = GENERATE(SchedulingPolicyType::Priority, SchedulingPolicyType::Fifo);
+        SchedulerPrebufferTestRig rig(settings);
+        rig.requestPlayAt(rig.TOTAL_FRAMES - rig.audioSettings.audioBlockFrames);
+        SchedulerTestRig::runIteration(rig.scheduler);
+        SchedulerTestRig::runIteration(rig.scheduler);
+        REQUIRE(rig.state.playing.load());
+
+        const AudioProcessResult last = rig.consumeBlock();
+        REQUIRE(last.playing);
+        REQUIRE_FALSE(last.underrun);
+        REQUIRE(rig.state.nextUnconsumedFrame.load() == rig.TOTAL_FRAMES);
+
+        // The scheduler has not run again, so playback permission is still true.
+        for (int callback = 0; callback < 3; ++callback)
+        {
+            const AudioProcessResult result = rig.consumeBlock();
+            REQUIRE_FALSE(result.playing);
+            REQUIRE_FALSE(result.underrun);
+            REQUIRE(rig.state.nextUnconsumedFrame.load() == rig.TOTAL_FRAMES);
+        }
+        REQUIRE(rig.state.playing.load());
+
+        SchedulerTestRig::runIteration(rig.scheduler);
+        REQUIRE_FALSE(rig.state.playing.load());
+    }
     TEST_CASE("Scheduler: prebuffer demand remains urgent outside the viewport")
     {
         SchedulerSettings settings;

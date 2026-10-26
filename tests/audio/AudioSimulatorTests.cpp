@@ -56,7 +56,7 @@ namespace anasa
 
         SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS, settings.channelCount, settings.audioBlockFrames);
         
-        AudioBlockProcessor processor(settings.audioBlockFrames, sharedState, readyAudioQueue);
+        AudioBlockProcessor processor(settings.audioBlockFrames, settings.sampleRate, sharedState, readyAudioQueue);
         AudioSimulator simulator(settings, sharedState.stop, processor);
 
         // SharedState starts with playing == false.
@@ -83,7 +83,7 @@ namespace anasa
 
         sharedState.playing.store(true, std::memory_order_release);
 
-        AudioBlockProcessor processor(settings.audioBlockFrames, sharedState, readyAudioQueue);
+        AudioBlockProcessor processor(settings.audioBlockFrames, settings.sampleRate, sharedState, readyAudioQueue);
         AudioSimulator simulator(settings, sharedState.stop, processor);
 
         simulator.start();
@@ -119,7 +119,7 @@ namespace anasa
 
         sharedState.playing.store(true, std::memory_order_release);
 
-        AudioBlockProcessor processor(settings.audioBlockFrames, sharedState, readyAudioQueue);
+        AudioBlockProcessor processor(settings.audioBlockFrames, settings.sampleRate, sharedState, readyAudioQueue);
         AudioSimulator simulator(settings, sharedState.stop, processor);
 
         simulator.start();
@@ -155,7 +155,7 @@ namespace anasa
 
         sharedState.playing.store(true, std::memory_order_release);
 
-        AudioBlockProcessor processor(settings.audioBlockFrames, sharedState, readyAudioQueue);
+        AudioBlockProcessor processor(settings.audioBlockFrames, settings.sampleRate, sharedState, readyAudioQueue);
         AudioSimulator simulator(settings, sharedState.stop, processor);
 
         simulator.start();
@@ -180,7 +180,7 @@ namespace anasa
 
         SpscQueue<AudioBlock> readyAudioQueue(READY_AUDIO_QUEUE_SLOTS, settings.channelCount, settings.audioBlockFrames);
 
-        AudioBlockProcessor processor(settings.audioBlockFrames, sharedState, readyAudioQueue);
+        AudioBlockProcessor processor(settings.audioBlockFrames, settings.sampleRate, sharedState, readyAudioQueue);
         AudioSimulator simulator(settings, sharedState.stop, processor);
 
         REQUIRE_NOTHROW(simulator.start());

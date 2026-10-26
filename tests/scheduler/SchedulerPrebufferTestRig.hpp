@@ -26,7 +26,7 @@ namespace anasa
               renderer(kernel, versions),
               executor(renderer),
               scheduler(settings, audioSettings, RenderSettings{}, TOTAL_FRAMES, state, versions, executor, readyAudioQueue),
-              processor(audioSettings.audioBlockFrames, state, readyAudioQueue),
+              processor(audioSettings.audioBlockFrames, TOTAL_FRAMES, state, readyAudioQueue),
               output(audioSettings.channelCount, audioSettings.audioBlockFrames),
               outputChannels(audioSettings.channelCount)
         {
