@@ -9,11 +9,11 @@ namespace anasa
     static_assert(std::atomic<bool>::is_always_lock_free);
     static_assert(std::atomic<int>::is_always_lock_free);
 
-     AudioBlockProcessor::AudioBlockProcessor(int blockFrames, int totalFrames, SharedState& sharedState, SpscQueue<AudioBlock>& readyAudioQueue)
-     : _blockFrames(blockFrames),
-       _totalFrames(totalFrames),
-       _sharedState(sharedState),
-       _readyAudioQueue(readyAudioQueue)
+    AudioBlockProcessor::AudioBlockProcessor(int blockFrames, int totalFrames, SharedState& sharedState, SpscQueue<AudioBlock>& readyAudioQueue)
+        : _blockFrames(blockFrames),
+          _totalFrames(totalFrames),
+          _sharedState(sharedState),
+          _readyAudioQueue(readyAudioQueue)
     {
         if (_blockFrames <= 0 || _blockFrames > MAX_AUDIO_BLOCK_FRAMES)
             throw std::invalid_argument("Invalid internal audio block size");
