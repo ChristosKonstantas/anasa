@@ -2,25 +2,40 @@
 #include <stdexcept>
 
 #include "Engine.hpp"
+#include "render/Renderer.hpp"
+#include "render/kernels/SyntheticRenderKernel.hpp"
 
 namespace anasa
 {
 
-    Engine::Engine(EngineSettings settings)
+    Engine::Engine(EngineSettings settings, RendererFactory rendererFactory)
         :_settings(settings),
          _totalFrames(calculateTotalFrames(_settings)),
-         _chunkCount(1 + (_totalFrames - 1) / CHUNK_FRAMES), // (ceil(_totalFrames/CHUNK_FRAMES))
+         _chunkCount(1 + (_totalFrames - 1) / CHUNK_FRAMES),
          _versionTable(_chunkCount),
          _sharedState(),
          _readyAudioQueue(READY_AUDIO_QUEUE_SLOTS, _settings.audio.channelCount, _settings.audio.audioBlockFrames),
-         _renderKernel(_settings.audio.sampleRate, _settings.render.workIterations),
-         _renderer(_renderKernel, _versionTable),
-         _executor(_settings.executor, _renderer),
+         _renderer(createRenderer(rendererFactory, _settings.audio, _settings.render, _versionTable)),
+         _executor(_settings.executor, *_renderer),
          _scheduler(_settings.scheduler, _settings.audio, _settings.render, _totalFrames, _sharedState, _versionTable, _executor, _readyAudioQueue),
          _audioBlockProcessor(_settings.audio.audioBlockFrames, _totalFrames, _sharedState, _readyAudioQueue),
          _audioSimulator(_settings.audio, _sharedState.stop, _audioBlockProcessor),
          _started(false)
     {
+    }
+
+    std::unique_ptr<ITileRenderer> Engine::createRenderer(const RendererFactory& factory,
+        const AudioSettings& audio, const RenderSettings& render, const IChunkVersionReader& versions)
+    {
+        if (!factory)
+            return std::make_unique<Renderer>(std::make_unique<SyntheticRenderKernel>(audio.sampleRate, render.workIterations), versions);
+
+        std::unique_ptr<ITileRenderer> renderer = factory(audio, render, versions);
+
+        if (!renderer)
+            throw std::invalid_argument("Renderer factory must return a non-null renderer");
+
+        return renderer;
     }
 
     Engine::~Engine()

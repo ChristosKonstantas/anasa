@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <utility>
 
 namespace anasa
 {
@@ -11,6 +12,22 @@ namespace anasa
           _versionTable(versionTable),
           _renderCancellation(_versionTable)
     {}
+
+    Renderer::Renderer(std::unique_ptr<IRenderKernel> kernel, const IChunkVersionReader& versionTable)
+        : _ownedKernel(std::move(kernel)),
+          _kernel(requireKernel(_ownedKernel)),
+          _versionTable(versionTable),
+          _renderCancellation(_versionTable)
+    {}
+
+    const IRenderKernel& Renderer::requireKernel(const std::unique_ptr<IRenderKernel>& kernel)
+    {
+        // reject a nullptr before it is dereferenced in the return statement
+        if (!kernel)
+            throw std::invalid_argument("Renderer kernel must not be null");
+
+        return *kernel;
+    }
 
     bool Renderer::renderTile(RenderJob& job, int tileIndex, const std::atomic<bool>& stopRequested) const
     {

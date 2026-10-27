@@ -55,7 +55,7 @@ flowchart TD
     Scheduler -->|"refreshPendingClassifications() updates queued priorities"| Pending
     Pending -->|"dispatchPendingTiles() calls Executor::submit()"| ExecutorQueue
     ExecutorQueue -->|"Move front RenderTask, then pop"| Workers
-    Workers -->|"RenderTaskProcessor::process() calls Renderer::renderTile()"| Render
+    Workers -->|"RenderTaskProcessor::process() calls ITileRenderer::renderTile()"| Render
     Render -->|"Worker publishes the job if process() accounts for its final tile"| CompletionQueue
     Admission["BackgroundRenderGate: _backgroundGate"]
 
