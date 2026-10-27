@@ -22,7 +22,12 @@ anasa_add_module(
         RenderCancellation.hpp
         kernels/SyntheticRenderKernel.cpp
         kernels/SyntheticRenderKernel.hpp
+        kernels/PcmRenderKernel.hpp
 )
+
+if(OPENVPI)
+    add_subdirectory(openvpi)
+endif()
 
 target_link_libraries(render-contracts INTERFACE audio-buffer)
 target_link_libraries(renderer PUBLIC render-contracts)

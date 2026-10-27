@@ -82,4 +82,13 @@ if(BUILD_TESTS)
 endif()
 
 # Code
+option(OPENVPI "Build the TIGER v106 ONNX renderer" OFF)
+option(NN_BENCHMARK "Build the standalone inference benchmark" OFF)
+if(NN_BENCHMARK AND NOT OPENVPI)
+    message(FATAL_ERROR "NN_BENCHMARK requires OPENVPI=ON")
+endif()
+
 add_subdirectory(src)
+if(NN_BENCHMARK)
+    add_subdirectory(apps)
+endif()
