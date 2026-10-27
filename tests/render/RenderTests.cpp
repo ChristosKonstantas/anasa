@@ -447,12 +447,15 @@ namespace anasa
     TEST_CASE("Renderer: Check renderTile() execution time / benchmark")
     {
         VersionTable versions(4);
-        RenderSettings settings = functions::makeTestRenderSettings(300);
-        SyntheticRenderKernel kernel(48000, settings.workIterations);
+        const int workIterations = 1000;
+        const int numChannels = 2;
+        const int sampleRate = 48000;
+        RenderSettings settings = functions::makeTestRenderSettings(workIterations);
+        SyntheticRenderKernel kernel(sampleRate, settings.workIterations);
         Renderer renderer(kernel, versions);
         std::atomic<bool> stopRequested{false};
 
-        RenderJob job(1);
+        RenderJob job(numChannels);
         functions::initializeJob(job, versions, 1);
 
         benchmarks::Benchmark benchmark(100, 10, 10);
@@ -475,13 +478,21 @@ namespace anasa
         REQUIRE(result.operationsPerSecond > 0.0);
         REQUIRE(result.nanosecondsPerOperation > 0.0);
         REQUIRE(result.checksum > 0.0);
-        double renderTimeInUs = result.nanosecondsPerOperation / 1000.0;
-        std::cout << "\n*--------------------------------* \n"
-                << "|      Renderer (renderTile())   | \n"
-                << "*--------------------------------* \n"
+        const double renderTimeInUs = result.nanosecondsPerOperation / 1000.0;
+        const double tileAudioTimeInUs = 1'000'000.0 * static_cast<double>(TILE_FRAMES) / 48000.0;
+        const double serialRealTimeFactor = renderTimeInUs / tileAudioTimeInUs;
+
+        std::cout << "\n*--------------------------------*\n"
+                << "|      Renderer (renderTile())   |\n"
+                << "*--------------------------------*\n"
                 << "Work iterations:       " << settings.workIterations << '\n'
-                << "Operations per second: " << result.operationsPerSecond << '\n'
+                << "Channels:              " << job.samples.channelCount() << '\n'
+                << "Sample rate:           " << 48000 << " Hz\n"
+                << "Frames per tile:       " << TILE_FRAMES << '\n'
+                << "Audio duration/tile:   " << tileAudioTimeInUs << " us\n"
                 << "Average tile time:     " << renderTimeInUs << " us\n"
+                << "Serial render RTF:     " << serialRealTimeFactor << '\n'
+                << "Operations per second: " << result.operationsPerSecond << '\n'
                 << "Checksum:              " << result.checksum << '\n';
         
     }
