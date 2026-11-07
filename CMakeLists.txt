@@ -83,3 +83,4 @@ endif()
 
 # Code
 add_subdirectory(src)
+add_subdirectory(runtime-demo)
