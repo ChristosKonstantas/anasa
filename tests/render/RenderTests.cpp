@@ -126,7 +126,7 @@ namespace anasa
         }
         SECTION("cancelled job skips the kernel")
         {
-            job.cancelled.store(true, std::memory_order_relaxed);
+            job.cancel();
             expectedCompletion = false;
         }
         SECTION("obsolete job skips the kernel")

@@ -41,7 +41,7 @@ namespace anasa
 
             REQUIRE(jobCompleted == (tile == TILES_PER_CHUNK - 1));
             REQUIRE(job->tilesRemaining.load(std::memory_order_relaxed) == TILES_PER_CHUNK - tile - 1);
-            REQUIRE(job->cancelled.load(std::memory_order_relaxed) == expectedCancellation);
+            REQUIRE(job->isCancelled() == expectedCancellation);
             REQUIRE(renderer.calls[tile].load(std::memory_order_relaxed) == 1);
         }
 
@@ -110,7 +110,7 @@ namespace anasa
 
         REQUIRE(completionCount == 1);
         REQUIRE(job->tilesRemaining.load(std::memory_order_acquire) == 0);
-        REQUIRE_FALSE(job->cancelled.load(std::memory_order_relaxed));
+        REQUIRE_FALSE(job->isCancelled());
 
         for (int channel = 0; channel < channelCount; ++channel)
         {

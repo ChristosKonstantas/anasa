@@ -60,7 +60,7 @@ namespace anasa
 
         REQUIRE(completed == job);
         REQUIRE(job->tilesRemaining.load(std::memory_order_acquire) == 0);
-        REQUIRE(job->cancelled.load(std::memory_order_relaxed) == (outcome != RenderOutcome::Complete));
+        REQUIRE(job->isCancelled() == (outcome != RenderOutcome::Complete));
 
         for (int tile = 0; tile < TILES_PER_CHUNK; ++tile)
         {

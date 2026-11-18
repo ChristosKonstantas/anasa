@@ -24,7 +24,7 @@ namespace anasa
             return false;
 
         const std::shared_ptr<RenderJob>& job = _jobs[chunk];
-        return job != nullptr && job->version == version && !job->cancelled.load(std::memory_order_relaxed);
+        return job != nullptr && job->version == version && !job->isCancelled();
     }
 
     std::shared_ptr<RenderJob> ActiveRenderJobs::create(int chunk, int version)
@@ -76,7 +76,7 @@ namespace anasa
         if (activeJob != job)
             return false;
 
-        const bool usable = !job->cancelled.load(std::memory_order_relaxed);
+        const bool usable = !job->isCancelled();
         
         activeJob.reset();
         

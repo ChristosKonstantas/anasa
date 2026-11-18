@@ -57,7 +57,7 @@ namespace anasa
 
         rig.requestPlayAt(120);
         rig.runIteration();
-        REQUIRE(oldJob->cancelled.load());
+        REQUIRE(oldJob->isCancelled());
         REQUIRE(oldJob->tilesRemaining.load() == (workerFinishesFirst ? 0 : 1));
 
         int targetChunk = 120;
@@ -93,7 +93,7 @@ namespace anasa
         const int editedFrame = 64 * CHUNK_FRAMES + TILE_FRAMES;
         SchedulerTestRig::handleCommand(rig.scheduler, {CommandType::Edit, editedFrame, editedFrame});
         rig.runIteration();
-        REQUIRE(oldJob->cancelled.load());
+        REQUIRE(oldJob->isCancelled());
         REQUIRE(oldJob->tilesRemaining.load() == 1);
         REQUIRE(rig.versions.get(64) == oldJob->version + 1);
 
@@ -120,11 +120,11 @@ namespace anasa
         const std::shared_ptr<RenderJob> firstJob = rig.executor.nextJob();
         rig.requestPlayAt(120);
         rig.runIteration();
-        REQUIRE_FALSE(firstJob->cancelled.load());
+        REQUIRE_FALSE(firstJob->isCancelled());
         REQUIRE(SchedulerTestRig::pendingTileCount(rig.scheduler) == TILES_PER_CHUNK - 1);
 
         rig.requirePlaybackAt(120);
-        REQUIRE_FALSE(firstJob->cancelled.load());
+        REQUIRE_FALSE(firstJob->isCancelled());
         REQUIRE(firstJob->tilesRemaining.load() == 0);
     }
 } // namespace anasa

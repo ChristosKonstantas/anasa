@@ -421,14 +421,14 @@ namespace anasa
         }
 
         int retainedTiles = static_cast<int>(std::count_if(_reclassificationBuffer.begin(), _reclassificationBuffer.end(),
-            [](const PendingRenderTile& tile) { return !tile.job->cancelled.load(std::memory_order_relaxed); }));
+        [](const PendingRenderTile& tile) { return !tile.job->isCancelled(); }));
 
         for (std::vector<PendingRenderTile>::reverse_iterator tile = _reclassificationBuffer.rbegin();
              tile != _reclassificationBuffer.rend() && retainedTiles + _layout.tilesPerChunk() > _settings.maxPendingTiles;
              ++tile
             )
         {
-            if (tile->classification.priority == RenderPriority::Urgent || tile->job->cancelled.load(std::memory_order_relaxed))
+            if (tile->classification.priority == RenderPriority::Urgent || tile->job->isCancelled())
                 continue;
 
             // Cancel the whole job: keeping only some of its pending tiles cannot produce a valid chunk.
@@ -442,7 +442,7 @@ namespace anasa
 
         for (PendingRenderTile& tile : _reclassificationBuffer)
         {
-            if (tile.job->cancelled.load(std::memory_order_relaxed))
+            if (tile.job->isCancelled())
             {
                 // Retire only unsubmitted tiles. Workers still account for their accepted tiles.
                 const int previousTilesRemaining = tile.job->tilesRemaining.fetch_sub(1, std::memory_order_acq_rel);

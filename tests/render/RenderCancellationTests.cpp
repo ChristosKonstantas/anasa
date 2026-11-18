@@ -19,7 +19,7 @@ namespace anasa
 
         SECTION("current job continues") { expected = false; }
         SECTION("shutdown cancels") { stopRequested.store(true, std::memory_order_release); }
-        SECTION("explicit cancellation cancels") { job.cancelled.store(true, std::memory_order_relaxed); }
+        SECTION("explicit cancellation cancels") { job.cancel(); }
         SECTION("edited content cancels") { versions.bump(job.chunk); }
         SECTION("another chunk's edit does not cancel")
         {

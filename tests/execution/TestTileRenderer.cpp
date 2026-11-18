@@ -23,7 +23,7 @@ namespace anasa
 
         if (stopRequested.load(std::memory_order_acquire) || job.isCancelled() || job.version != 1)
         {
-            job.cancelled.store(true, std::memory_order_relaxed);
+            job.cancel();
             return false;
         }
 

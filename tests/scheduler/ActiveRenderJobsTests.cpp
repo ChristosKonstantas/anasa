@@ -43,7 +43,7 @@ namespace anasa
         REQUIRE_FALSE(jobs.hasCurrent(0, 3));
         REQUIRE_FALSE(jobs.finish(first));
         REQUIRE(jobs.hasCurrent(1, 1));
-        REQUIRE_FALSE(second->cancelled.load());
+        REQUIRE_FALSE(second->isCancelled());
     }
 
     TEST_CASE("ActiveRenderJobs: nonmatching completions cannot release a current job")
@@ -63,7 +63,7 @@ namespace anasa
         {
             completed = current;
             current = jobs.create(0, 1);
-            REQUIRE(completed->cancelled.load());
+            REQUIRE(completed->isCancelled());
         }
 
         if (completed != nullptr)
@@ -71,7 +71,7 @@ namespace anasa
 
         REQUIRE_FALSE(jobs.finish(completed));
         REQUIRE(jobs.hasCurrent(0, 1));
-        REQUIRE_FALSE(current->cancelled.load());
+        REQUIRE_FALSE(current->isCancelled());
 
         current->tilesRemaining.store(0);
         REQUIRE(jobs.finish(current));
@@ -85,11 +85,11 @@ namespace anasa
         std::weak_ptr<RenderJob> lifetime = completed;
 
         SECTION("Scheduler requests cancellation") { jobs.cancel(0); }
-        SECTION("Executor reports cancellation") { completed->cancelled.store(true); }
+        SECTION("Executor reports cancellation") { completed->cancel(); }
 
         REQUIRE_FALSE(jobs.hasCurrent(0, 1));
         REQUIRE(jobs.hasCurrent(1, 1));
-        REQUIRE_FALSE(other->cancelled.load());
+        REQUIRE_FALSE(other->isCancelled());
 
         completed.reset();
         REQUIRE_FALSE(lifetime.expired());
@@ -102,7 +102,7 @@ namespace anasa
 
         const std::shared_ptr<RenderJob> retry = jobs.create(0, 1);
         REQUIRE(jobs.hasCurrent(0, 1));
-        REQUIRE_FALSE(retry->cancelled.load());
+        REQUIRE_FALSE(retry->isCancelled());
     }
 
     TEST_CASE("ActiveRenderJobs: shutdown cancels and forgets jobs without destroying external owners")
@@ -115,8 +115,8 @@ namespace anasa
         jobs.cancelAll();
         jobs.cancelAll();
 
-        REQUIRE(oldJob->cancelled.load());
-        REQUIRE(otherJob->cancelled.load());
+        REQUIRE(oldJob->isCancelled());
+        REQUIRE(otherJob->isCancelled());
         REQUIRE_FALSE(jobs.hasCurrent(0, 1));
         REQUIRE_FALSE(jobs.hasCurrent(1, 1));
         otherJob.reset();
@@ -127,6 +127,6 @@ namespace anasa
         oldJob->tilesRemaining.store(0);
         REQUIRE_FALSE(jobs.finish(oldJob));
         REQUIRE(jobs.hasCurrent(0, 1));
-        REQUIRE_FALSE(newJob->cancelled.load());
+        REQUIRE_FALSE(newJob->isCancelled());
     }
 } // namespace anasa

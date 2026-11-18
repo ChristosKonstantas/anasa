@@ -82,7 +82,7 @@ namespace anasa
                 RenderTask& task = _renderTasksQueue.front();
 
                 if (task.job)
-                    task.job->cancelled.store(true, std::memory_order_release);
+                    task.job->cancel();
 
                 _renderTasksQueue.pop();
             }
