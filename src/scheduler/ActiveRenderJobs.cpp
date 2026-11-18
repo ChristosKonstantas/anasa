@@ -4,8 +4,10 @@
 
 namespace anasa
 {
-    ActiveRenderJobs::ActiveRenderJobs(int channelCount, int chunkCount)
-        : _channelCount(channelCount)
+    ActiveRenderJobs::ActiveRenderJobs(int channelCount, int chunkCount,
+                                 RenderLayout layout)
+    : _layout(layout),
+      _channelCount(channelCount)
     {
         if (_channelCount <= 0)
             throw std::invalid_argument("channelCount must be greater than zero");
@@ -32,7 +34,7 @@ namespace anasa
 
         cancel(chunk);
 
-        std::shared_ptr<RenderJob> job = std::make_shared<RenderJob>(_channelCount);
+        std::shared_ptr<RenderJob> job = std::make_shared<RenderJob>(_channelCount, _layout);
         
         job->chunk = chunk;
         job->version = version;

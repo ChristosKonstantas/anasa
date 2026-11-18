@@ -48,10 +48,12 @@ namespace anasa
 
         try
         {
+            _taskProcessor.resetFailure();
+            _runningJobs.resize(static_cast<std::size_t>(_settings.workerCount));
             _workers.reserve(_settings.workerCount);
 
             for (int worker = 0; worker < _settings.workerCount; ++worker)
-                _workers.emplace_back([this]{workerLoop();});
+                _workers.emplace_back([this, worker] { workerLoop(worker); });
         }
         catch (...)
         {
@@ -69,7 +71,11 @@ namespace anasa
                 return;
 
             _stopRequested.store(true, std::memory_order_release);
-
+            for (const std::shared_ptr<RenderJob>& job : _runningJobs)
+            {
+                if (job)
+                    job->cancel();
+            }
             // Any remaining work should not be executed during shutdown: cancel and remove every task that has not started rendering.
             while (!_renderTasksQueue.empty())
             {
@@ -104,7 +110,7 @@ namespace anasa
         if (!task.job)
             throw std::invalid_argument("RenderTask job must not be null");
 
-        if (task.tileIndex < 0 || task.tileIndex >= TILES_PER_CHUNK)
+        if (task.tileIndex < 0 || task.tileIndex >= task.job->layout.tilesPerChunk())
             throw std::out_of_range("RenderTask tileIndex is outside the chunk");
         
         // (1) Enqueue a task
@@ -150,7 +156,12 @@ namespace anasa
         return static_cast<int>(_renderTasksQueue.size());
     }
 
-    void Executor::workerLoop()
+    void Executor::rethrowFailure() const
+    {
+        _taskProcessor.rethrowFailure();
+    }
+    
+    void Executor::workerLoop(int worker)
     {
         while (true)
         {
@@ -159,17 +170,26 @@ namespace anasa
             {
                 std::unique_lock<std::mutex> lock(_taskMutex);
 
-                _taskConditionVariable.wait(lock, [this]{ return _stopRequested.load(std::memory_order_acquire) || !_renderTasksQueue.empty();});
+                _taskConditionVariable.wait(lock, [this]
+                {
+                    return _stopRequested.load(std::memory_order_acquire) || !_renderTasksQueue.empty();
+                });
 
                 if (_stopRequested.load(std::memory_order_acquire))
                     return;
 
                 task = std::move(_renderTasksQueue.front());
                 _renderTasksQueue.pop();
+
+                _runningJobs[worker] = task.job;
             }
 
-            // Process outside the task mutex so other workers can take tasks.
             const bool jobCompleted = _taskProcessor.process(task, _stopRequested);
+            
+            {
+                std::lock_guard<std::mutex> lock(_taskMutex);
+                _runningJobs[worker].reset();
+            }
 
             if (jobCompleted)
             {

@@ -82,7 +82,7 @@ namespace anasa
         bool                                         chunkIntersectsViewport(int chunk) const;
         int                                          pendingTileLimit(RenderPriority priority) const;
         int                                          urgentChunkEnd(int playheadFrame) const;
-
+        const RenderLayout                           _layout;
         const SchedulerSettings                      _settings;
         const int                                    _audioBlockFrames;
         const int                                    _channelCount;

@@ -9,8 +9,9 @@
 
 namespace anasa
 {
-    TimelineAudioPublisher::TimelineAudioPublisher(int audioBlockFrames, int channelCount, int totalFrames, SpscQueue<AudioBlock>& readyAudioQueue)
-        : _audioBlockFrames(audioBlockFrames),
+    TimelineAudioPublisher::TimelineAudioPublisher(int audioBlockFrames, int channelCount, int totalFrames, SpscQueue<AudioBlock>& readyAudioQueue, RenderLayout layout)
+        : _layout(layout),
+          _audioBlockFrames(audioBlockFrames),
           _channelCount(channelCount),
           _totalFrames(totalFrames),
           _readyAudioQueue(readyAudioQueue)
@@ -25,7 +26,7 @@ namespace anasa
             throw std::invalid_argument("audioBlockFrames exceeds MAX_AUDIO_BLOCK_FRAMES");
 
         if (CHUNK_FRAMES % _audioBlockFrames != 0)
-            throw std::invalid_argument("audioBlockFrames must divide CHUNK_FRAMES");
+            throw std::invalid_argument("audio block size must divide the render chunk size");
 
         if (_totalFrames <= 0)
             throw std::invalid_argument("totalFrames must be greater than zero");

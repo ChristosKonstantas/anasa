@@ -1,6 +1,8 @@
 #ifndef RENDER_SETTINGS_HPP
 #define RENDER_SETTINGS_HPP
 
+#include "render/RenderLayout.hpp"
+
 namespace anasa
 {
     struct RenderSettings
@@ -13,6 +15,8 @@ namespace anasa
 
         /* Synthetic serialized CPU work used to create measurable scheduling contention */
         int workIterations = 300;
+
+        RenderLayout layout;
     };
 
 } // namespace anasa

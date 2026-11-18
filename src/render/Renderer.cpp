@@ -31,24 +31,24 @@ namespace anasa
 
     bool Renderer::renderTile(RenderJob& job, int tileIndex, const std::atomic<bool>& stopRequested) const
     {
-        if (tileIndex < 0 || tileIndex >= TILES_PER_CHUNK)
+        if (tileIndex < 0 || tileIndex >= job.layout.tilesPerChunk())
             throw std::out_of_range("tileIndex is outside the chunk");
 
         if (job.chunk < 0 || job.chunk >= _versionTable.count())
             throw std::out_of_range("chunk index is outside the timeline");
 
-        if (job.samples.channelCount() <= 0 || job.samples.frameCount() != CHUNK_FRAMES)
+        if (job.samples.channelCount() <= 0 || job.samples.frameCount() != job.layout.chunkFrames())
             throw std::invalid_argument("RenderJob storage must contain complete channels of one chunk");
 
         if (_renderCancellation.shouldCancel(job, stopRequested))
         {
-            job.cancelled.store(true, std::memory_order_relaxed);
+            job.cancel();
             return false;
         }
 
-        const int tileFirstFrame = tileIndex * TILE_FRAMES;
-        const int tileLastFrame = std::min(tileFirstFrame + TILE_FRAMES, CHUNK_FRAMES);
-        const int chunkFirstFrame = job.chunk * CHUNK_FRAMES;
+        const int tileFirstFrame = tileIndex * job.layout.tileFrames();
+        const int tileLastFrame = std::min(tileFirstFrame + job.layout.tileFrames(), job.layout.chunkFrames());
+        const int chunkFirstFrame = job.layout.firstFrameOfChunk(job.chunk);
 
         for (int frame = tileFirstFrame; frame < tileLastFrame; ++frame)
         {
@@ -58,7 +58,7 @@ namespace anasa
             {
                 if (_renderCancellation.shouldCancel(job, stopRequested))
                 {
-                    job.cancelled.store(true, std::memory_order_relaxed);
+                    job.cancel();
                     return false;
                 }
             }
@@ -71,7 +71,7 @@ namespace anasa
         // Content may change after the last periodic check.
         if (_renderCancellation.shouldCancel(job, stopRequested))
         {
-            job.cancelled.store(true, std::memory_order_relaxed);
+            job.cancel();
             return false;
         }
 

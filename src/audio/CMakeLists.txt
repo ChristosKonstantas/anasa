@@ -32,4 +32,4 @@ anasa_add_module(
         simulator/AudioSimulator.cpp
 )
 
-target_link_libraries(audio-simulator PUBLIC audio-contracts audio-buffer)
+target_link_libraries(audio-simulator PUBLIC audio-contracts audio-buffer Threads::Threads)

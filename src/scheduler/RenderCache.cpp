@@ -5,8 +5,9 @@
 
 namespace anasa
 {
-    RenderCache::RenderCache(int channelCount, int totalFrames, const IChunkVersionReader& versions)
-        : _channelCount(channelCount),
+    RenderCache::RenderCache(int channelCount, int totalFrames, const IChunkVersionReader& versions, RenderLayout layout)
+        : _layout(layout),
+          _channelCount(channelCount),
           _versions(versions)
     {
         if (_channelCount <= 0)
@@ -23,7 +24,7 @@ namespace anasa
         _cacheEntries.reserve(static_cast<std::size_t>(expectedChunkCount));
 
         for (int chunk = 0; chunk < expectedChunkCount; ++chunk)
-            _cacheEntries.emplace_back(_channelCount);
+            _cacheEntries.emplace_back(_channelCount, _layout.chunkFrames());
     }
 
     int RenderCache::chunkCount() const noexcept

@@ -38,7 +38,7 @@ namespace anasa
         bool post(Command command);
         PlaybackSnapshot playbackSnapshot() const;
         EngineMetrics metrics() const;
-
+        void rethrowRenderFailure() const;
     private:
         static int calculateTotalFrames(const EngineSettings &settings);
         static std::unique_ptr<ITileRenderer> createRenderer(const RendererFactory& factory,

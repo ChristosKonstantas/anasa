@@ -14,7 +14,7 @@ namespace anasa
         RenderSettings render;
         ExecutorSettings executor;
         SchedulerSettings scheduler;
-
+        int timelineFrames = 0;
         int timelineInSeconds = 12;
     };
     

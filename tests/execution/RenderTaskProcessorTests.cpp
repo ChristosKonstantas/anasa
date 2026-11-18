@@ -29,7 +29,8 @@ namespace anasa
         RenderTaskProcessor processor(renderer);
         VersionTable versions(1);
         std::shared_ptr<RenderJob> job = functions::makeTestRenderJob(versions, 0, channelCount);
-        job->cancelled.store(alreadyCancelled, std::memory_order_relaxed);
+        if (alreadyCancelled)
+            job->cancel();
 
         const bool expectedCancellation = outcome != RenderOutcome::Complete || stopRequested.load(std::memory_order_acquire) || alreadyCancelled;
 

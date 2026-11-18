@@ -11,7 +11,7 @@ namespace anasa
     Engine::Engine(EngineSettings settings, RendererFactory rendererFactory)
         :_settings(settings),
          _totalFrames(calculateTotalFrames(_settings)),
-         _chunkCount(1 + (_totalFrames - 1) / CHUNK_FRAMES),
+         _chunkCount(_settings.render.layout.chunkCount(_totalFrames)),
          _versionTable(_chunkCount),
          _sharedState(),
          _readyAudioQueue(READY_AUDIO_QUEUE_SLOTS, _settings.audio.channelCount, _settings.audio.audioBlockFrames),
@@ -126,25 +126,43 @@ namespace anasa
         };
     }
 
+    void Engine::rethrowRenderFailure() const
+    {
+        _executor.rethrowFailure();
+    }
+    
     int Engine::calculateTotalFrames(const EngineSettings& settings)
     {
-        if (settings.timelineInSeconds <= 0)
-            throw std::invalid_argument("timelineInSeconds must be greater than zero");
-
         if (settings.audio.sampleRate <= 0)
             throw std::invalid_argument("sampleRate must be greater than zero");
-        
-        // Validate dimensions before queue-slot buffers are allocated.
+
         if (settings.audio.channelCount <= 0)
             throw std::invalid_argument("channelCount must be greater than zero");
 
         if (settings.audio.audioBlockFrames <= 0 || settings.audio.audioBlockFrames > MAX_AUDIO_BLOCK_FRAMES)
+        {
             throw std::invalid_argument("Invalid internal audio block size");
+        }
 
-        if (settings.timelineInSeconds > std::numeric_limits<int>::max() / settings.audio.sampleRate)
-            throw std::invalid_argument("Timeline frame count exceeds the supported range");
+        if (settings.timelineFrames < 0)
+            throw std::invalid_argument("timelineFrames must not be negative");
 
-        return settings.timelineInSeconds * settings.audio.sampleRate;
+        int totalFrames = settings.timelineFrames;
+
+        if (totalFrames == 0)
+        {
+            if (settings.timelineInSeconds <= 0 || settings.timelineInSeconds > std::numeric_limits<int>::max() / settings.audio.sampleRate)
+                throw std::invalid_argument("Invalid or overflowing timeline duration");
+
+            totalFrames = settings.timelineInSeconds * settings.audio.sampleRate;
+        }
+
+        if (totalFrames % settings.audio.audioBlockFrames != 0 || settings.render.layout.chunkFrames() % settings.audio.audioBlockFrames != 0)
+        {
+            throw std::invalid_argument("Timeline and render chunks must contain complete audio blocks");
+        }
+
+        return totalFrames;
     }
 
 

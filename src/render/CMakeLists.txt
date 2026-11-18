@@ -31,5 +31,5 @@ if(OPENVPI)
     add_subdirectory(openvpi)
 endif()
 
-target_link_libraries(render-contracts INTERFACE audio-buffer)
+target_link_libraries(render-contracts INTERFACE audio-buffer Threads::Threads)
 target_link_libraries(renderer PUBLIC render-contracts)
