@@ -1,7 +1,7 @@
 #ifndef OPEN_VPI_RENDERER_HPP
 #define OPEN_VPI_RENDERER_HPP
 
-#include "audio/AudioBuffer.hpp"
+#include "render/IPhraseRenderer.hpp"
 #include <onnxruntime_cxx_api.h>
 #include <array>
 #include <cstdint>
@@ -12,23 +12,9 @@
 
 namespace anasa
 {
-    struct SingingRequest
-    {
-        std::vector<std::string> phonemes;
-        std::vector<std::int64_t> durations; // Mel frames per phoneme.
-        std::vector<float> f0;              // Hz per mel frame; zero for silence.
-    };
-
-    struct OpenVpiRenderResult
-    {
-        AudioBuffer samples; // Planar stereo, identical left/right channels.
-        double acousticMs = 0.0;
-        double vocoderMs = 0.0;
-    };
-
     // TIGER v106/fresh CPU adapter. One caller at a time; never call on the audio thread.
     // Renders whole phrases. This is not an ITileRenderer implementation.
-    class OpenVpiRenderer final
+    class OpenVpiRenderer final : public IPhraseRenderer
     {
     public:
         static constexpr int SAMPLE_RATE = 44100;
@@ -37,7 +23,9 @@ namespace anasa
         static constexpr int MAX_MEL_FRAMES = 4096;
 
         OpenVpiRenderer(const std::filesystem::path& voicebank, int threads, int steps);
-        OpenVpiRenderResult render(const SingingRequest& request);
+
+        PhraseRenderFormat format() const noexcept override;
+        PhraseRenderResult render(const SingingRequest& request, std::stop_token stopToken = {}) override;
 
     private:
         std::int64_t _steps;

@@ -6,7 +6,7 @@ A C++ experimental prototype for studying how to schedule computationally expens
 
 The prototype uses a simulated periodic audio-device callback. It is not an audio host, plugin, or complete DAW.
 
-The current renderer generates deterministic synthetic audio and artificial CPU load. **It does not yet perform neural inference.**
+The current renderer generates deterministic synthetic audio and artificial CPU load. The default engine renderer generates deterministic synthetic audio and artificial CPU load. The experimental `OPENVPI` backend performs whole-phrase neural inference through `IPhraseRenderer`. `NN_BENCHMARK` builds its standalone CPU benchmark and WAV export. Neural inference is not yet connected to the scheduler or runtime demo.
 
 The problem statement is the following:
 

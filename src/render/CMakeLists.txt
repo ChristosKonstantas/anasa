@@ -4,6 +4,8 @@ anasa_add_module(
     SOURCES
         IChunkVersionReader.hpp
         ITileRenderer.hpp
+        IPhraseRenderer.hpp
+        PhraseRenderTypes.hpp
         kernels/IRenderKernel.hpp
         RenderConstants.hpp
         RenderTypes.hpp

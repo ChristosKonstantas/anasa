@@ -85,9 +85,24 @@ namespace
     {
         if (!value.IsTensor())
             throw std::runtime_error("Model output is not a tensor");
-        const auto info = value.GetTensorTypeAndShapeInfo();
+        const Ort::TensorTypeAndShapeInfo info = value.GetTensorTypeAndShapeInfo();
         if (info.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT || info.GetShape() != expected)
             throw std::runtime_error("Unexpected model output type or shape");
+    }
+
+    void throwIfStopped(std::stop_token token)
+    {
+        if (token.stop_requested())
+            throw anasa::PhraseRenderCancelled();
+    }
+
+    // A stop callback must not throw. If ORT cannot terminate the run, the checks
+    // around Run still discard its output once execution returns.
+    void requestTermination(Ort::RunOptions& options) noexcept
+    {
+        const OrtApi& api = Ort::GetApi();
+        if (OrtStatus* status = api.RunOptionsSetTerminate(options))
+            api.ReleaseStatus(status);
     }
 }
 
@@ -103,16 +118,27 @@ namespace anasa
           _phonemes(readPhonemes(voicebank / "dsacoustic/phonemes.txt"))
     {}
 
-    OpenVpiRenderResult OpenVpiRenderer::render(const SingingRequest& request)
+    PhraseRenderFormat OpenVpiRenderer::format() const noexcept
     {
+        return {SAMPLE_RATE, CHANNELS, HOP_SIZE};
+    }
+
+    PhraseRenderResult OpenVpiRenderer::render(const SingingRequest& request,
+                                               std::stop_token stopToken)
+    {
+        throwIfStopped(stopToken);
+
+        if (request.sampleRate != SAMPLE_RATE || request.hopSize != HOP_SIZE)
+            throw std::invalid_argument("Request conditioning grid does not match the renderer");
+
         if (request.phonemes.empty() || request.phonemes.size() != request.durations.size())
             throw std::invalid_argument("Provide one duration per phoneme");
 
         if (request.f0.empty() || request.f0.size() > MAX_MEL_FRAMES)
             throw std::invalid_argument("Phrase must contain 1..4096 mel frames");
 
-        const auto frames = static_cast<std::int64_t>(request.f0.size());
-        
+        const int64_t frames = static_cast<std::int64_t>(request.f0.size());
+
         std::int64_t total = 0;
         for (std::int64_t duration : request.durations)
         {
@@ -121,35 +147,37 @@ namespace anasa
 
             total += duration;
         }
-        
+
         if (total != frames)
             throw std::invalid_argument("Durations must sum to the f0 frame count");
-        
+
         for (float frequency : request.f0)
             if (!std::isfinite(frequency) || frequency < 0.0f)
                 throw std::invalid_argument("f0 must contain finite non-negative frequencies");
 
         std::vector<std::int64_t> tokens;
         tokens.reserve(request.phonemes.size());
-        
+
         for (const auto& phone : request.phonemes)
         {
             const auto found = _phonemes.find(phone);
             if (found == _phonemes.end())
                 throw std::invalid_argument("Unknown phoneme: " + phone);
+
             tokens.push_back(found->second);
         }
 
         // Own writable backing storage for ORT tensor views; keep it alive through both Run calls.
-        auto durations = request.durations;
-        auto f0 = request.f0;
+        std::vector<int64_t> durations = request.durations;
+        std::vector<float> f0 = request.f0;
         std::vector<float> gender(f0.size(), 0.0f);
         std::vector<float> velocity(f0.size(), 1.0f);
         std::vector<float> speaker(f0.size() * _speaker.size());
-        
+
         for (std::size_t frame = 0; frame < f0.size(); ++frame)
-            std::copy(_speaker.begin(), _speaker.end(), speaker.data() + frame * _speaker.size());
-        
+            std::copy(_speaker.begin(), _speaker.end(),
+                      speaker.data() + frame * _speaker.size());
+
         float depth = 0.6f;
         std::int64_t steps = _steps;
 
@@ -157,9 +185,10 @@ namespace anasa
         const std::array<std::int64_t, 2> frameShape{1, frames};
         const std::array<std::int64_t, 3> speakerShape{1, frames, 256};
         const std::array<std::int64_t, 0> scalarShape{};
-        auto memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-        
-        std::array<Ort::Value, 8> inputs{
+        Ort::MemoryInfo memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+        std::array<Ort::Value, 8> inputs
+        {
             tensor(memory, tokens.data(), tokens.size(), phoneShape),
             tensor(memory, durations.data(), durations.size(), phoneShape),
             tensor(memory, f0.data(), f0.size(), frameShape),
@@ -169,42 +198,78 @@ namespace anasa
             tensor(memory, &depth, 1, scalarShape),
             tensor(memory, &steps, 1, scalarShape)
         };
-        
-        const std::array<const char*, 8> names{
-            "tokens", "durations", "f0", "gender", "velocity", "spk_embed", "depth", "steps"
+
+        const std::array<const char*, 8> names
+        {
+            "tokens", "durations", "f0", "gender",
+            "velocity", "spk_embed", "depth", "steps"
         };
+
         const char* melName = "mel";
         Ort::RunOptions runOptions;
-        const auto acousticStart = Clock::now();
-        auto mel = _acoustic.Run(runOptions, names.data(), inputs.data(), inputs.size(), &melName, 1);
-        const auto acousticEnd = Clock::now();
-        checkShape(mel.at(0), {1, frames, 128});
 
-        std::array<Ort::Value, 2> vocoderInputs{
-            std::move(mel[0]), tensor(memory, f0.data(), f0.size(), frameShape)
-        };
-        
-        const std::array<const char*, 2> vocoderNames{"mel", "f0"};
-        const char* waveformName = "waveform";
-        const auto vocoderStart = Clock::now();
-        auto waveform = _vocoder.Run(runOptions, vocoderNames.data(), vocoderInputs.data(),
-                                     vocoderInputs.size(), &waveformName, 1);
-        const auto vocoderEnd = Clock::now();
-        checkShape(waveform.at(0), {1, frames * HOP_SIZE});
-
-        OpenVpiRenderResult result{AudioBuffer(CHANNELS, static_cast<int>(frames * HOP_SIZE))};
-        const float* mono = waveform[0].GetTensorData<float>();
-        
-        for (int frame = 0; frame < result.samples.frameCount(); ++frame)
+        std::stop_callback cancellation(stopToken, [&runOptions]() noexcept
         {
-            if (!std::isfinite(mono[frame]))
-                throw std::runtime_error("Non-finite model output");
-            result.samples[0][frame] = mono[frame];
-            result.samples[1][frame] = mono[frame];
+            requestTermination(runOptions);
+        });
+
+        try
+        {
+            throwIfStopped(stopToken);
+
+            const std::chrono::steady_clock::time_point acousticStart = Clock::now();
+            std::vector<Ort::Value> mel = _acoustic.Run(runOptions, names.data(), inputs.data(), inputs.size(), &melName, 1);
+            const std::chrono::steady_clock::time_point acousticEnd = Clock::now();
+
+            throwIfStopped(stopToken);
+            checkShape(mel.at(0), {1, frames, 128});
+
+            std::array<Ort::Value, 2> vocoderInputs
+            {
+                std::move(mel[0]),
+                tensor(memory, f0.data(), f0.size(), frameShape)
+            };
+
+            const std::array<const char*, 2> vocoderNames{"mel", "f0"};
+            const char* waveformName = "waveform";
+
+            throwIfStopped(stopToken);
+
+            const std::chrono::steady_clock::time_point vocoderStart = Clock::now();
+            std::vector<Ort::Value> waveform = _vocoder.Run(runOptions, vocoderNames.data(), vocoderInputs.data(), vocoderInputs.size(), &waveformName, 1);
+            const std::chrono::steady_clock::time_point vocoderEnd = Clock::now();
+
+            throwIfStopped(stopToken);
+            checkShape(waveform.at(0), {1, frames * HOP_SIZE});
+
+            PhraseRenderResult result;
+            result.samples = AudioBuffer(CHANNELS, static_cast<int>(frames * HOP_SIZE));
+            result.sampleRate = SAMPLE_RATE;
+
+            const float* mono = waveform[0].GetTensorData<float>();
+
+            for (int frame = 0; frame < result.samples.frameCount(); ++frame)
+            {
+                if (!std::isfinite(mono[frame]))
+                    throw std::runtime_error("Non-finite model output");
+
+                result.samples[0][frame] = mono[frame];
+                result.samples[1][frame] = mono[frame];
+            }
+
+            result.stages = 
+            {
+                {"acoustic", milliseconds(acousticStart, acousticEnd)},
+                {"vocoder", milliseconds(vocoderStart, vocoderEnd)}
+            };
+
+            throwIfStopped(stopToken);
+            return result;
         }
-        
-        result.acousticMs = milliseconds(acousticStart, acousticEnd);
-        result.vocoderMs = milliseconds(vocoderStart, vocoderEnd);
-        return result;
+        catch (const Ort::Exception&)
+        {
+            throwIfStopped(stopToken);
+            throw;
+        }
     }
 }

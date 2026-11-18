@@ -2,6 +2,7 @@
 #include "render/kernels/PcmRenderKernel.hpp"
 #include "render/Renderer.hpp"
 #include "render/VersionTable.hpp"
+#include "render/IPhraseRenderer.hpp"
 #include "WaveWriter.hpp"
 #include <algorithm>
 #include <array>
@@ -37,19 +38,38 @@ namespace
         return value;
     }
 
-    anasa::SingingRequest makeExample(int transpose)
+    anasa::SingingRequest makeExample(int transpose, anasa::PhraseRenderFormat format)
     {
+        if (format.sampleRate != 44100 || format.hopSize != 512 || format.channelCount != 2)
+            throw std::invalid_argument("This prepared fixture requires 44100 Hz, hop 512, stereo");
+
         anasa::SingingRequest request;
+        request.sampleRate = format.sampleRate;
+        request.hopSize = format.hopSize;
         request.phonemes = {"SP", "l", "aa", "l", "aa", "l", "aa", "SP"};
         request.durations = {14, 5, 43, 5, 43, 5, 43, 14};
         request.f0.resize(172, 0.0f);
+
         const std::array<int, 3> notes{57, 60, 64};
+
         for (std::size_t note = 0; note < notes.size(); ++note)
         {
-            const float hz = static_cast<float>(440.0 * std::exp2((notes[note] + transpose - 69) / 12.0));
+            const float hz = static_cast<float>(
+                440.0 * std::exp2((notes[note] + transpose - 69) / 12.0));
+
             std::fill_n(request.f0.data() + 14 + note * 48, 48, hz);
         }
+
         return request;
+    }
+    
+    double stageMs(const anasa::PhraseRenderResult& result, std::string_view name)
+    {
+        for (const auto& stage : result.stages)
+            if (stage.name == name)
+                return stage.milliseconds;
+
+        throw std::runtime_error("Missing timing stage: " + std::string(name));
     }
 
     struct AudioStatistics
@@ -60,27 +80,41 @@ namespace
         std::size_t clippedSamples = 0;
     };
 
-    AudioStatistics checkAudio(const anasa::AudioBuffer& samples)
+        AudioStatistics checkAudio(const anasa::PhraseRenderResult& rendered,
+                               anasa::PhraseRenderFormat format, int expectedFrames)
     {
-        if (samples.channelCount() != 2 || samples.frameCount() != 172 * anasa::OpenVpiRenderer::HOP_SIZE)
-            throw std::runtime_error("Unexpected fixture audio dimensions");
+        const auto& samples = rendered.samples;
+
+        if (rendered.sampleRate != format.sampleRate ||
+            samples.channelCount() != format.channelCount ||
+            samples.frameCount() != expectedFrames)
+        {
+            throw std::runtime_error("Unexpected fixture audio format or dimensions");
+        }
+
         AudioStatistics result;
+
         for (int frame = 0; frame < samples.frameCount(); ++frame)
         {
             if (samples[0][frame] != samples[1][frame])
                 throw std::runtime_error("Expected identical left/right channels");
+
             for (int channel = 0; channel < samples.channelCount(); ++channel)
             {
                 const double value = samples[channel][frame];
+
                 if (!std::isfinite(value))
                     throw std::runtime_error("Non-finite audio");
+
                 result.checksum += value * value;
                 result.peak = std::max(result.peak, std::abs(value));
                 result.clippedSamples += std::abs(value) > 1.0;
             }
         }
+
         if (!std::isfinite(result.checksum) || result.checksum <= 0.0)
             throw std::runtime_error("Invalid or silent output");
+
         result.rms = std::sqrt(result.checksum / (2.0 * samples.frameCount()));
         return result;
     }
@@ -128,58 +162,109 @@ int main(int argc, char** argv)
     try
     {
         if (argc != 6 && argc != 7)
+        {
             throw std::invalid_argument(
-                "Usage: anasa-inference-benchmark <voicebank> <threads> <steps> <trials> <output.wav> [transpose]");
+                "Usage: anasa-inference-benchmark "
+                "<voicebank> <threads> <steps> <trials> <output.wav> [transpose]");
+        }
+
         const int threads = argument(argv[2], 1, 64);
         const int steps = argument(argv[3], 1, 100);
         const int trials = argument(argv[4], 1, 100);
         const int transpose = argc == 7 ? argument(argv[6], -12, 12) : 0;
-        const auto request = makeExample(transpose);
+
+        const std::filesystem::path outputPath(argv[5]);
+        if (outputPath.has_parent_path())
+            std::filesystem::create_directories(outputPath.parent_path());
+
         std::cout << std::fixed << std::setprecision(3)
                   << "ONNX Runtime: " << Ort::GetVersionString() << '\n'
-                  << "Provider: CPU | Intra-op threads: " << threads << " | Serial requests\n"
+                  << "Provider: CPU | Intra-op threads: " << threads
+                  << " | Serial requests\n"
                   << "TIGER v106/fresh | Steps: " << steps << " | Depth: 0.6\n"
-                  << "Prepared phrase: la la la | MIDI: " << 57 + transpose << ',' << 60 + transpose << ',' << 64 + transpose << '\n'
+                  << "Prepared phrase: la la la | MIDI: "
+                  << 57 + transpose << ','
+                  << 60 + transpose << ','
+                  << 64 + transpose << '\n'
                   << "Channels: 2 (identical L/R) | Sample rate: 44100 Hz\n"
-                  << "Mel frames: 172 | Audio frames: 88064 | Measured trials: " << trials << '\n';
+                  << "Mel frames: 172 | Audio frames: 88064 | Measured trials: "
+                  << trials << '\n';
 
         const auto setupStart = Clock::now();
-        anasa::OpenVpiRenderer renderer(std::filesystem::path(argv[1]), threads, steps);
-        std::cout << "Model setup: " << elapsedMs(setupStart) << " ms\n" << std::flush;
+
+        std::unique_ptr<anasa::IPhraseRenderer> renderer =
+            std::make_unique<anasa::OpenVpiRenderer>(
+                std::filesystem::path(argv[1]), threads, steps);
+
+        std::cout << "Model setup: " << elapsedMs(setupStart)
+                  << " ms\n" << std::flush;
+
+        const auto format = renderer->format();
+        const auto request = makeExample(transpose, format);
+        const int expectedFrames =
+            static_cast<int>(request.f0.size()) * format.hopSize;
 
         const auto firstStart = Clock::now();
-        auto first = renderer.render(request);
+        auto first = renderer->render(request);
         const double firstMs = elapsedMs(firstStart);
-        checkAudio(first.samples);
-        std::cout << "First render: " << firstMs << " ms (excluded from warm trials)\n" << std::flush;
-        checkAudio(renderer.render(request).samples); // One additional warm-up.
+
+        checkAudio(first, format, expectedFrames);
+
+        std::cout << "First render: " << firstMs
+                  << " ms (excluded from warm trials)\n" << std::flush;
+
+        checkAudio(renderer->render(request), format, expectedFrames);
 
         std::vector<double> times;
         times.reserve(static_cast<std::size_t>(trials));
+
         anasa::AudioBuffer lastAudio;
         double checksum = 0.0;
-        const double audioMs = 1000.0 * 172 * anasa::OpenVpiRenderer::HOP_SIZE / anasa::OpenVpiRenderer::SAMPLE_RATE;
-        std::cout << "trial,acoustic_ms,vocoder_ms,total_ms,audio_ms,rtf,rms,peak,clipped_samples\n" << std::flush;
+        const double audioMs = 1000.0 * expectedFrames / format.sampleRate;
+
+        std::cout
+            << "trial,acoustic_ms,vocoder_ms,total_ms,audio_ms,rtf,rms,peak,clipped_samples\n"
+            << std::flush;
+
         for (int trial = 1; trial <= trials; ++trial)
         {
             const auto start = Clock::now();
-            auto result = renderer.render(request);
-            const double totalMs = elapsedMs(start); // Includes temporary cleanup before render() returns.
+            auto result = renderer->render(request);
+            const double totalMs = elapsedMs(start);
+
             if (!std::isfinite(totalMs) || totalMs <= 0.0)
                 throw std::runtime_error("Invalid timing measurement");
-            const auto statistics = checkAudio(result.samples); // Outside inference timing.
+
+            const auto statistics = checkAudio(result, format, expectedFrames);
+
             times.push_back(totalMs);
             checksum += statistics.checksum;
-            std::cout << trial << ',' << result.acousticMs << ',' << result.vocoderMs << ','
-                      << totalMs << ',' << audioMs << ',' << totalMs / audioMs << ','
-                      << statistics.rms << ',' << statistics.peak << ',' << statistics.clippedSamples << '\n' << std::flush;
+
+            std::cout << trial << ','
+                      << stageMs(result, "acoustic") << ','
+                      << stageMs(result, "vocoder") << ','
+                      << totalMs << ','
+                      << audioMs << ','
+                      << totalMs / audioMs << ','
+                      << statistics.rms << ','
+                      << statistics.peak << ','
+                      << statistics.clippedSamples << '\n'
+                      << std::flush;
+
             lastAudio = std::move(result.samples);
         }
 
         std::sort(times.begin(), times.end());
-        const double mean = std::accumulate(times.begin(), times.end(), 0.0) / static_cast<double>(times.size());
+
+        const double mean =
+            std::accumulate(times.begin(), times.end(), 0.0) /
+            static_cast<double>(times.size());
+
         const std::size_t middle = times.size() / 2;
-        const double median = times.size() % 2 ? times[middle] : (times[middle - 1] + times[middle]) / 2.0;
+        const double median = times.size() % 2
+            ? times[middle]
+            : (times[middle - 1] + times[middle]) / 2.0;
+
         std::cout << "Mean phrase time: " << mean << " ms\n"
                   << "Median phrase time: " << median << " ms\n"
                   << "Worst observed phrase time: " << times.back() << " ms\n"
@@ -188,8 +273,10 @@ int main(int argc, char** argv)
                   << "Checksum (both channels, measured trials): " << checksum << '\n';
 
         auto delivered = deliverTiles(lastAudio);
-        anasa::apps::writeStereoWave(std::filesystem::path(argv[5]), delivered, anasa::OpenVpiRenderer::SAMPLE_RATE);
-        std::cout << "WAV saved: " << argv[5] << '\n';
+
+        anasa::apps::writeStereoWave(outputPath, delivered, format.sampleRate);
+
+        std::cout << "WAV saved: " << outputPath.string() << '\n';
         return 0;
     }
     catch (const std::exception& error)
