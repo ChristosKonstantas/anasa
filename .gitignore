@@ -1,5 +1,4 @@
 build/
-runtime-demo/
 .vscode/
 local-deps/
 models/
