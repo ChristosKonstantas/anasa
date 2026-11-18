@@ -16,7 +16,7 @@ namespace anasa
         if (totalFrames <= 0)
             throw std::invalid_argument("totalFrames must be greater than zero");
 
-        const int expectedChunkCount = 1 + (totalFrames - 1) / CHUNK_FRAMES;
+        const int expectedChunkCount = _layout.chunkCount(totalFrames);
 
         if (_versions.count() != expectedChunkCount)
             throw std::invalid_argument("VersionTable size does not match timeline chunk count");
@@ -50,7 +50,7 @@ namespace anasa
         if (chunk < 0 || chunk >= chunkCount())
             return false;
 
-        if (version != _versions.get(chunk) || samples.channelCount() != _channelCount || samples.frameCount() != CHUNK_FRAMES)
+        if (version != _versions.get(chunk) || samples.channelCount() != _channelCount || samples.frameCount() != _layout.chunkFrames())
             return false;
 
         CacheEntry& cacheEntry = _cacheEntries[chunk];
@@ -60,7 +60,7 @@ namespace anasa
             const std::span<const float> source = samples[channel];
             const std::span<float> destination = cacheEntry.samples[channel];
 
-            for (int frame = 0; frame < CHUNK_FRAMES; ++frame)
+            for (int frame = 0; frame < _layout.chunkFrames(); ++frame)
                 destination[frame] = source[frame];
         }
 

@@ -191,7 +191,7 @@ namespace anasa
         std::shared_ptr<RenderJob> job = functions::makeTestRenderJob(versions, 1);
         std::shared_ptr<RenderJob> completedJob;
 
-        job->cancelled.store(true, std::memory_order_relaxed);
+        job->cancel();
 
         executor.start();
 

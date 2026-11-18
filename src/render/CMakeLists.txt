@@ -8,6 +8,7 @@ anasa_add_module(
         PhraseRenderTypes.hpp
         kernels/IRenderKernel.hpp
         RenderConstants.hpp
+        RenderLayout.hpp
         RenderTypes.hpp
 )
 

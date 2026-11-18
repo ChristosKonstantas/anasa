@@ -160,7 +160,7 @@ namespace anasa
     {
         _taskProcessor.rethrowFailure();
     }
-    
+
     void Executor::workerLoop(int worker)
     {
         while (true)
@@ -185,7 +185,7 @@ namespace anasa
             }
 
             const bool jobCompleted = _taskProcessor.process(task, _stopRequested);
-            
+
             {
                 std::lock_guard<std::mutex> lock(_taskMutex);
                 _runningJobs[worker].reset();

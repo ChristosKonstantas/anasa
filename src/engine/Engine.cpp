@@ -130,7 +130,6 @@ namespace anasa
     {
         _executor.rethrowFailure();
     }
-    
     int Engine::calculateTotalFrames(const EngineSettings& settings)
     {
         if (settings.audio.sampleRate <= 0)

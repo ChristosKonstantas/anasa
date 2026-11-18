@@ -51,7 +51,7 @@ namespace anasa
         const std::shared_ptr<RenderJob>& job = _jobs[chunk];
 
         if (job != nullptr)
-            job->cancelled.store(true, std::memory_order_relaxed);
+            job->cancel();
     }
 
     void ActiveRenderJobs::cancelAll() noexcept
@@ -60,7 +60,7 @@ namespace anasa
         {
             if (job != nullptr)
             {
-                job->cancelled.store(true, std::memory_order_relaxed);
+                job->cancel();
                 job.reset();
             }
         }

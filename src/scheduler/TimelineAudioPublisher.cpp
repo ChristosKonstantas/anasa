@@ -5,7 +5,6 @@
 
 #include "scheduler/TimelineAudioPublisher.hpp"
 #include "audio/AudioConstants.hpp"
-#include "render/RenderFrameUtils.hpp"
 
 namespace anasa
 {
@@ -25,7 +24,7 @@ namespace anasa
         if (_audioBlockFrames > MAX_AUDIO_BLOCK_FRAMES)
             throw std::invalid_argument("audioBlockFrames exceeds MAX_AUDIO_BLOCK_FRAMES");
 
-        if (CHUNK_FRAMES % _audioBlockFrames != 0)
+        if (_layout.chunkFrames() % _audioBlockFrames != 0)
             throw std::invalid_argument("audio block size must divide the render chunk size");
 
         if (_totalFrames <= 0)
@@ -46,14 +45,14 @@ namespace anasa
     {
         assert(nextUnconsumedFrame >= 0 && nextUnconsumedFrame <= _totalFrames);
         assert(nextUnconsumedFrame % _audioBlockFrames == 0);
-        assert(cache.chunkCount() == 1 + (_totalFrames - 1) / CHUNK_FRAMES);
+        assert(cache.chunkCount() == _layout.chunkCount(_totalFrames));
 
         // Audio already passed by the consumer must not be published late.
         _nextFrameToPublish = std::max(_nextFrameToPublish, nextUnconsumedFrame);
 
         while (_nextFrameToPublish <= _totalFrames - _audioBlockFrames)
         {
-            const int chunk = frameToChunk(_nextFrameToPublish);
+            const int chunk = _layout.frameToChunk(_nextFrameToPublish);
             const AudioBuffer* chunkSamples = cache.findCurrent(chunk);
 
             // Never skip missing or outdated content to publish a later chunk.
@@ -61,7 +60,7 @@ namespace anasa
                 break;
 
             const int blockFirstFrame = _nextFrameToPublish;
-            const int chunkOffset = blockFirstFrame - firstFrameOfChunk(chunk);
+            const int chunkOffset = blockFirstFrame - _layout.firstFrameOfChunk(chunk);
 
             assert(chunkSamples->channelCount() == _channelCount);
             assert(chunkOffset + _audioBlockFrames <= chunkSamples->frameCount());

@@ -145,7 +145,7 @@ namespace anasa
             const PendingRenderTile& tile = _pendingTiles.top();
 
             if (tile.job != nullptr)
-                tile.job->cancelled.store(true, std::memory_order_relaxed);
+                tile.job->cancel();
 
             _pendingTiles.pop();
         }
@@ -432,7 +432,7 @@ namespace anasa
                 continue;
 
             // Cancel the whole job: keeping only some of its pending tiles cannot produce a valid chunk.
-            tile->job->cancelled.store(true, std::memory_order_relaxed);
+            tile->job->cancel();
             for (const PendingRenderTile& candidate : _reclassificationBuffer)
             {
                 if (candidate.job == tile->job)
