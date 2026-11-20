@@ -26,6 +26,9 @@ anasa_add_module(
         kernels/SyntheticRenderKernel.cpp
         kernels/SyntheticRenderKernel.hpp
         kernels/PcmRenderKernel.hpp
+        PreparedSingingTimeline.hpp
+        PhraseTileRenderer.hpp
+        PhraseTileRenderer.cpp
 )
 
 if(OPENVPI)
