@@ -19,7 +19,7 @@ namespace anasa
          _executor(_settings.executor, *_renderer),
          _scheduler(_settings.scheduler, _settings.audio, _settings.render, _totalFrames, _sharedState, _versionTable, _executor, _readyAudioQueue),
          _audioBlockProcessor(_settings.audio.audioBlockFrames, _totalFrames, _sharedState, _readyAudioQueue),
-         _audioSimulator(_settings.audio, _sharedState.stop, _audioBlockProcessor),
+         _audioSimulator(_settings.audio, _sharedState.stop, _audioBlockProcessor, _settings.captureFrames),
          _started(false)
     {
     }
@@ -125,11 +125,20 @@ namespace anasa
             _audioSimulator.getCallbackMaxInUs()
         };
     }
+    
+    AudioBuffer Engine::capturedAudio() const
+    {
+        if (_started)
+            throw std::logic_error("Read captured audio only after Engine::stop()");
+
+        return _audioSimulator.capturedAudio();
+    }
 
     void Engine::rethrowRenderFailure() const
     {
         _executor.rethrowFailure();
     }
+
     int Engine::calculateTotalFrames(const EngineSettings& settings)
     {
         if (settings.audio.sampleRate <= 0)

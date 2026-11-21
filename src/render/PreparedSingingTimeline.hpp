@@ -13,7 +13,7 @@ namespace anasa
     {
     public:
         PreparedSingingTimeline(PhraseRenderFormat format, std::vector<std::vector<SingingRequest>> phrases)
-            : _format(format), 
+            : _format(format),
               _phrases(std::move(phrases))
         {
             if (_format.sampleRate <= 0 ||

@@ -16,6 +16,7 @@ namespace anasa
         SchedulerSettings scheduler;
         int timelineFrames = 0;
         int timelineInSeconds = 12;
+        int captureFrames = 0; // Zero disables simulated callback recording.
     };
     
 } // namespace anasa

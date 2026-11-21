@@ -8,6 +8,7 @@
 #include "engine/EngineTypes.hpp"
 #include "utils/queues/SpscQueue.hpp"
 #include "audio/AudioConstants.hpp"
+#include "audio/AudioBuffer.hpp"
 #include "audio/AudioTypes.hpp"
 #include "audio/simulator/AudioSimulator.hpp"
 #include "audio/AudioBlockProcessor.hpp"
@@ -39,6 +40,8 @@ namespace anasa
         PlaybackSnapshot playbackSnapshot() const;
         EngineMetrics metrics() const;
         void rethrowRenderFailure() const;
+        AudioBuffer capturedAudio() const;
+        
     private:
         static int calculateTotalFrames(const EngineSettings &settings);
         static std::unique_ptr<ITileRenderer> createRenderer(const RendererFactory& factory,

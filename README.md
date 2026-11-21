@@ -6,7 +6,7 @@ A C++ experimental prototype for studying how to schedule computationally expens
 
 The prototype uses a simulated periodic audio-device callback. It is not an audio host, plugin, or complete DAW.
 
-The current renderer generates deterministic synthetic audio and artificial CPU load. The default engine renderer generates deterministic synthetic audio and artificial CPU load. The experimental `OPENVPI` backend performs whole-phrase neural inference through `IPhraseRenderer`. `NN_BENCHMARK` builds its standalone CPU benchmark and WAV export. Neural inference is not yet connected to the scheduler or runtime demo.
+The default engine renderer generates deterministic synthetic audio and artificial CPU load. The optional `OPENVPI` backend performs whole-phrase neural inference through `IPhraseRenderer`. `PhraseTileRenderer` adapts it to the existing `ITileRenderer` execution path. The runtime demo can run synthetic rendering, neural rendering, or both sequentially, and records the simulated callback output to WAV. `NN_BENCHMARK` separately builds the standalone inference benchmark.
 
 The problem statement is the following:
 
@@ -14,7 +14,7 @@ Given limited rendering capacity and moving playback deadlines, which work shoul
 
 The project separates that problem into smaller components:
 
-- A deterministic synthetic renderer that turns timeline tiles into synthetic samples.
+- Interchangeable tile renderers: deterministic synthetic work and an optional adapter for prepared singing phrases.
 - A fixed worker pool that performs render work concurrently.
 - A scheduler that classifies, orders, caches, and publishes rendered work.
 - Lock-free Single-producer/single-consumer (SPSC) queues. They store commands and ready for consumption audio blocks.
@@ -227,7 +227,9 @@ or
 
 - `BUILD_TESTS=ON`: build the Catch2 tests.
 - `BENCHMARKS=ON`: also enable benchmark cases: requires `BUILD_TESTS=ON`.
-
+- `OPENVPI=ON`: build the TIGER v106 ONNX backend and enable neural runtime-demo modes. This requires `ONNXRUNTIME_ROOT`.
+- `NN_BENCHMARK=ON`: build the standalone inference benchmark. This requires `OPENVPI=ON`.
+- 
 To enable benchmarks, replace `-DBENCHMARKS=OFF` with
 `-DBENCHMARKS=ON` in the configuration command, then rebuild.
 Use Release for performance measurements.
@@ -243,6 +245,7 @@ catch_discover_tests(tests DISCOVERY_MODE PRE_TEST)
 ```
 
 CTest command works across platforms without needing the executable's precise location, and CTest normally comes with CMake.
+
 
 
 ## Continuous integration
