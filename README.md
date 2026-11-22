@@ -246,6 +246,151 @@ catch_discover_tests(tests DISCOVERY_MODE PRE_TEST)
 
 CTest command works across platforms without needing the executable's precise location, and CTest normally comes with CMake.
 
+## Runtime demo
+
+[`runtime-demo/main.cpp`](runtime-demo/main.cpp) runs a fixed comparison of FIFO
+and Priority scheduling using the complete engine and simulated audio callback.
+
+Each scenario runs five trials per policy. Every trial creates a fresh engine,
+and the first policy alternates between FIFO and Priority to reduce consistent
+execution-order bias. One complete execution runs 30 trials; allow more than
+a minute for it to finish.
+
+The demo uses synthetic rendering. It does not perform neural inference, play
+through an audio device, or export a WAV file.
+
+### Build and run
+
+Run commands from the repository root. The executable target is currently named
+`main`. It is included in the normal CMake build; no separate demo option or
+`BENCHMARKS=ON` setting is required.
+
+**Windows — Visual Studio generator**
+
+```powershell
+cmake -S . -B build -DBUILD_TESTS=OFF
+cmake --build build --config Release --target main --parallel
+.\build\runtime-demo\Release\main.exe
+```
+
+To save the output, use this command instead of the final command above:
+
+```powershell
+.\build\runtime-demo\Release\main.exe | Tee-Object -FilePath ".\build\runtime-demo-results.txt"
+```
+
+**Linux / macOS — Unix Makefiles or Ninja**
+
+```sh
+cmake -S . -B build/runtime-release -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF
+cmake --build build/runtime-release --target main --parallel
+./build/runtime-release/runtime-demo/main
+```
+
+The executable takes no command-line arguments. Scenario settings are defined
+in `makeScenarios()` in `runtime-demo/main.cpp`.
+
+### Configuration and scenarios
+
+The current configuration uses:
+
+| Setting | Value |
+| --- | --- |
+| Timeline | 12 seconds |
+| Sample rate / channels | 48,000 Hz / 2 |
+| Callback block | 128 frames, approximately 2.667 ms |
+| Executor workers | 4 |
+| Synthetic work iterations | 1,000 |
+| Trials | 5 per policy, per scenario |
+| Initial background preparation | 100 ms |
+| Requested observation interval | 2,000 ms per trial |
+| Recovery timeout | 10 seconds per recovery wait |
+
+Other engine settings retain their defaults.
+
+1. **Seek recovery under background backlog:** start the engine, allow 100 ms
+   of background preparation, then seek to 6 seconds and request playback.
+   After recovery is observed, wait for a further 2,000 ms.
+
+2. **Viewport-guided seek preparation:** perform the same initial preparation,
+   move the viewport to `[6 s, 8 s)`, and allow another 100 ms of preparation
+   before seeking to 6 seconds and requesting playback. The reported recovery
+   time excludes this additional viewport-preparation interval.
+
+3. **Edit recovery during playback:** seek to 6 seconds and wait for recovery,
+   wait another 1,000 ms, then invalidate approximately the `[7 s, 7.25 s]`
+   region. Measure edit recovery and wait for a further 1,000 ms afterward.
+   This edit changes the synthetic content version; it does not modify notes
+   or lyrics.
+
+Background preparation uses a fixed waiting interval, not a fixed number of
+completed or queued jobs. The resulting backlog depends on machine performance
+and thread scheduling.
+
+### What the metrics measure
+
+**Recovery time** starts immediately before posting the seek or edit command.
+It ends when the control thread observes all three conditions:
+
+- The playback generation has advanced.
+- The audio cursor has acknowledged that generation.
+- Playback permission is enabled (`playing == true`).
+
+This measures observed playback readiness. It does not establish that the
+first valid audio block of the new generation has already been consumed.
+The observation loop requests 250-microsecond sleeps, but its actual wake-up
+timing depends on the operating system.
+
+**Median recovery** summarizes the five trials. **Worst recovery** is the
+largest observed value, not a guaranteed upper bound.
+
+**Callbacks** and **underruns** are summed across the five trials. The underrun
+rate is:
+
+```text
+100 × total underruns / total counted callbacks
+```
+
+A counted callback is an active-playback callback. When its required audio
+block is unavailable, the processor outputs silence, reports an underrun,
+and advances the playback cursor. Paused and prebuffering callbacks are excluded.
+
+Counters cover the complete engine trial. In the edit scenario, they include
+playback before and after the edit, rather than only the recovery interval.
+
+The console label `Active playback: 2000 ms` refers to requested wall-clock
+observation waits. It is not a measured guarantee of exactly 2,000 ms of
+uninterrupted playback.
+
+### Example results
+
+The following output is from one local Windows Release run with the configuration
+above. These are illustrative measurements, not portable performance guarantees.
+
+| Scenario | Policy | Median recovery (ms) | Maximum observed (ms) | Underruns / callbacks | Underrun rate |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Seek recovery | FIFO | 668.57 | 685.88 | 3,178 / 3,768 | 84.34% |
+| Seek recovery | Priority | 77.20 | 78.86 | 0 / 3,762 | 0.00% |
+| Viewport-prepared seek | FIFO | 590.78 | 593.06 | 0 / 3,769 | 0.00% |
+| Viewport-prepared seek | Priority | 31.24 | 31.88 | 0 / 3,779 | 0.00% |
+| Edit recovery | FIFO | 577.17 | 620.28 | 2,633 / 3,827 | 68.80% |
+| Edit recovery | Priority | 92.48 | 94.27 | 0 / 3,828 | 0.00% |
+
+Priority scheduling produced lower median recovery times in all three scenarios
+and no counted active-playback underruns in this run.
+
+The viewport scenario also shows why recovery time and underruns must be reported
+together: both policies recorded zero underruns, while their recovery times differed
+substantially. Waiting before playback is enabled does not increase the underrun count.
+
+This comparison covers the complete FIFO and Priority modes, including their
+different background-admission and urgent-capacity behavior. It does not isolate
+the effect of priority ordering alone.
+
+Results depend on hardware, compiler, build configuration, operating-system
+scheduling, and competing load. Record that information when comparing runs.
+Five trials and a simulated callback do not establish audio-device latency,
+hard real-time guarantees, or neural-inference performance.
 
 
 ## Continuous integration
@@ -268,6 +413,9 @@ tests cause the corresponding CI job to fail.
 
 Results and logs are available under the **C++ CI** workflow in the
 repository's Actions tab.
+
+The runtime demo is also compiled as part of the normal build. Its timed scenarios
+are not registered with CTest and are not executed by the current CI workflow.
 
 ## Generating the dependency graph
 
