@@ -1,4 +1,8 @@
-add_executable(main main.cpp)
+add_executable(main
+    main.cpp
+    RuntimeDemo.cpp
+    RuntimeDemo.hpp
+)
 target_link_libraries(main PRIVATE engine)
 
 if(OPENVPI)
