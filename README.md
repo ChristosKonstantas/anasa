@@ -256,8 +256,7 @@ and the first policy alternates between FIFO and Priority to reduce consistent
 execution-order bias. One complete execution runs 30 trials; allow more than
 a minute for it to finish.
 
-The demo uses synthetic rendering. It does not perform neural inference, play
-through an audio device, or export a WAV file.
+The demo supports synthetic rendering and optional OpenVPI neural inference. It records the simulated callback output to WAV, including preparation silence. It does not play directly through an audio device.
 
 ### Build and run
 
@@ -287,8 +286,11 @@ cmake --build build/runtime-release --target main --parallel
 ./build/runtime-release/runtime-demo/main
 ```
 
-The executable takes no command-line arguments. Scenario settings are defined
-in `makeScenarios()` in `runtime-demo/main.cpp`.
+Run `main --help` for mode arguments. `synthetic`, `neural`, and `both` run the seek, viewport, and edit comparisons. `listen` performs full neural timeline playback without edits:
+
+`main listen <voicebank> <threads> <steps> <trials> <output-directory>`
+
+Neural modes require a build configured with `OPENVPI=ON`.
 
 ### Configuration and scenarios
 

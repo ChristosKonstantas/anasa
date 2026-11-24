@@ -22,10 +22,11 @@ public:
 private:
     using Clock = std::chrono::steady_clock;
 
-    enum class Mode { Synthetic, Neural, Both };
+    enum class Mode { Synthetic, Neural, Both, Listen};
 
     enum class ScenarioType
     {
+        LinearPlayback,
         SeekRecovery,
         ViewportPreparedSeek,
         EditRecovery

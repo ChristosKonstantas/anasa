@@ -82,7 +82,7 @@ int RuntimeDemo::run(int argc, char** argv)
 
     configure(argc, argv);
 
-    if (_mode != Mode::Neural)
+    if (_mode == Mode::Synthetic || _mode == Mode::Both)
         runSuite(false);
 
     if (_mode != Mode::Synthetic)
@@ -207,7 +207,8 @@ void RuntimeDemo::postRequired(anasa::Engine& engine, anasa::Command command)
 double RuntimeDemo::waitForGenerationRecovery(anasa::Engine& engine, const anasa::PlaybackSnapshot& previousState, Clock::time_point commandPostedAt,
                                         const ScenarioSettings& scenario, std::string_view description)
 {
-    waitUntil(
+    waitUntil
+    (
         [&]
         {
             engine.rethrowRenderFailure();
@@ -218,7 +219,9 @@ double RuntimeDemo::waitForGenerationRecovery(anasa::Engine& engine, const anasa
 
             return generationAdvanced && cursorAcknowledgedGeneration && state.playing;
         },
-        std::chrono::milliseconds(scenario.timeoutMilliseconds), description);
+        std::chrono::milliseconds(scenario.timeoutMilliseconds), 
+        description
+    );
 
     return std::chrono::duration<double, std::milli>(Clock::now() - commandPostedAt).count();
 }
@@ -249,7 +252,7 @@ RuntimeDemo::TrialResult RuntimeDemo::runTrial(anasa::SchedulingPolicyType polic
     engineSettings.captureFrames = 120 * engineSettings.audio.sampleRate;
 
     const int totalFrames = engineSettings.timelineFrames > 0 ? engineSettings.timelineFrames : engineSettings.timelineInSeconds * engineSettings.audio.sampleRate;
-    const int unalignedSeekTarget = totalFrames / 2;
+    const int unalignedSeekTarget = scenario.scenarioType == ScenarioType::LinearPlayback ? 0 : totalFrames / 2;
     const int seekTarget = unalignedSeekTarget - unalignedSeekTarget % engineSettings.audio.audioBlockFrames;
 
     const int viewportFirstFrame = seekTarget;
@@ -312,6 +315,28 @@ RuntimeDemo::TrialResult RuntimeDemo::runTrial(anasa::SchedulingPolicyType polic
 
         switch (scenario.scenarioType)
         {
+            case ScenarioType::LinearPlayback:
+            {
+                result.recoveryMilliseconds = seekRecoveryMilliseconds;
+
+                std::cout << "\n  Startup=" << seekRecoveryMilliseconds << " ms | Playing the complete timeline through the simulated callback...\n" << std::flush;
+
+                waitUntil
+                (
+                    [&]
+                    {
+                        engine.rethrowRenderFailure();
+                        const anasa::PlaybackSnapshot state = engine.playbackSnapshot();
+
+                        return state.generation == beforeSeek.generation + 1 &&
+                                state.cursorGeneration == state.generation &&
+                                state.nextUnconsumedFrame == totalFrames;
+                    },
+                    std::chrono::milliseconds(scenario.timeoutMilliseconds + scenario.playbackMilliseconds), "the end of the timeline"
+                );
+
+                break;
+            }
             case ScenarioType::SeekRecovery:
             case ScenarioType::ViewportPreparedSeek:
             {
@@ -344,7 +369,7 @@ RuntimeDemo::TrialResult RuntimeDemo::runTrial(anasa::SchedulingPolicyType polic
 
         engine.rethrowRenderFailure();
 
-        if (!engine.playbackSnapshot().playing)
+        if (scenario.scenarioType != ScenarioType::LinearPlayback && !engine.playbackSnapshot().playing)
             throw std::runtime_error("Playback stopped before the observation window ended");
 
         engine.stop();
@@ -354,13 +379,16 @@ RuntimeDemo::TrialResult RuntimeDemo::runTrial(anasa::SchedulingPolicyType polic
         result.callbacks = metrics.callbacks;
         result.underruns = metrics.underruns;
         result.maximumCallbackMicroseconds = metrics.maximumCallbackMicroseconds;
-
+        
+        if (scenario.scenarioType == ScenarioType::LinearPlayback && result.callbacks != totalFrames / engineSettings.audio.audioBlockFrames)
+            throw std::runtime_error("Full playback did not consume the expected number of blocks");
+        
         engine.rethrowRenderFailure();
 
         if (neuralRenderer != nullptr)
             result.neural = neuralRenderer->metrics();
 
-        const char* scenarioName = scenario.scenarioType == ScenarioType::SeekRecovery ? "seek" : scenario.scenarioType == ScenarioType::ViewportPreparedSeek ? "viewport" : "edit";
+        const char* scenarioName = scenario.scenarioType == ScenarioType::LinearPlayback ? "playback" : scenario.scenarioType == ScenarioType::SeekRecovery ? "seek" : scenario.scenarioType == ScenarioType::ViewportPreparedSeek ? "viewport" : "edit";        
         const std::filesystem::path wavePath = _outputDirectory / (_neural ? "neural" : "synthetic") / (std::string(scenarioName) + "-" + policyName(policy) + "-" + std::to_string(trialNumber) + ".wav");
 
         const anasa::AudioBuffer recording = engine.capturedAudio();
@@ -443,7 +471,8 @@ void RuntimeDemo::printResults(const ComparisonResult& comparison)
               << "Recovery metric: " << comparison.settings.recoveryName
               << " | Trials per policy: " << comparison.settings.trialsPerPolicy
               << " | Renderer: " << (_neural ? "OpenVPI CPU" : "Synthetic")
-              << " | Active playback: " << comparison.settings.playbackMilliseconds << " ms\n";
+              << (comparison.settings.scenarioType == ScenarioType::LinearPlayback ? " | Timeline duration (rounded): " : " | Active playback: ")
+              << comparison.settings.playbackMilliseconds << " ms\n";
 
     if (comparison.settings.scenarioType == ScenarioType::ViewportPreparedSeek)
         std::cout << "Viewport preparation: " << comparison.settings.viewportPreparationMilliseconds << " ms\n";
@@ -476,12 +505,14 @@ void RuntimeDemo::printResults(const ComparisonResult& comparison)
 void RuntimeDemo::printUsage()
 {
     std::cout << "Choose a runtime demo mode:\n"
-              << "  main synthetic [trials] [workIterations] [output-directory]\n"
-              << "  main neural <voicebank> <threads> <steps> <trials> <output-directory>\n"
-              << "  main both <voicebank> <threads> <steps> <trials> <output-directory> [workIterations]\n\n"
-              << "Synthetic defaults: 5 trials, 1000 work iterations, build/runtime-recordings\n"
-              << "Both runs synthetic first, then neural, with separate results and WAV folders.\n"
-              << "Each suite compares FIFO and Priority for seek, viewport and edit recovery.\n";
+                << "  main synthetic [trials] [workIterations] [output-directory]\n"
+                << "  main neural <voicebank> <threads> <steps> <trials> <output-directory>\n"
+                << "  main listen <voicebank> <threads> <steps> <trials> <output-directory>\n"
+                << "  main both <voicebank> <threads> <steps> <trials> <output-directory> [workIterations]\n\n"
+                << "Synthetic defaults: 5 trials, 1000 work iterations, build/runtime-recordings\n"
+                << "Both runs synthetic first, then neural, with separate results and WAV folders.\n"
+                << "Synthetic, neural and both compare seek, viewport and edit recovery.\n"
+                << "Listen compares FIFO and Priority for full neural playback and saves WAVs.\n";
 }
 
 void RuntimeDemo::configure(int argc, char** argv)
@@ -499,15 +530,15 @@ void RuntimeDemo::configure(int argc, char** argv)
         if (argc >= 4) _workIterations = parseInteger(argv[3], 0, 100000);
         if (argc >= 5) _outputDirectory = argv[4];
     }
-    else if (mode == "neural" || mode == "both")
+    else if (mode == "neural" || mode == "both" || mode == "listen")
     {
         if (argc != 7 && !(mode == "both" && argc == 8))
-            throw std::invalid_argument("Usage: main neural|both <voicebank> <threads> <steps> <trials> <output-directory> [workIterations: both only]");
+            throw std::invalid_argument("Usage: main neural|listen|both <voicebank> <threads> <steps> <trials> <output-directory> [workIterations: both only]");
 
 #ifndef ANASA_OPENVPI
         throw std::runtime_error("This executable has no neural backend. Configure with OPENVPI=ON and rebuild.");
 #else
-        _mode = mode == "both" ? Mode::Both : Mode::Neural;
+        _mode = mode == "both" ? Mode::Both : mode == "listen" ? Mode::Listen : Mode::Neural;
         _voicebank = argv[2];
         _threads = parseInteger(argv[3], 1, 64);
         _steps = parseInteger(argv[4], 1, 100);
@@ -524,12 +555,12 @@ void RuntimeDemo::configure(int argc, char** argv)
 #endif
     }
     else
-        throw std::invalid_argument("Unknown mode. Use synthetic, neural, both, or --help.");
+        throw std::invalid_argument("Unknown mode. Use synthetic, neural, both, listen, or --help.");
 
     if (_outputDirectory.empty())
         throw std::invalid_argument("Output directory must not be empty");
 
-    if (_mode != Mode::Neural)
+    if (_mode == Mode::Synthetic || _mode == Mode::Both)
         std::filesystem::create_directories(_outputDirectory / "synthetic");
 
     if (_mode != Mode::Synthetic)
@@ -551,7 +582,10 @@ void RuntimeDemo::runSuite(bool neural)
         std::cout << "44100 Hz | identical L/R | one executor worker | one 88064-frame phrase per task\n"
                   << "Timeline: " << _timeline->totalFrames() << " frames (" << std::fixed << std::setprecision(3)
                   << 1000.0 * _timeline->totalFrames() / _timeline->format().sampleRate << " ms)\n"
-                  << "Fresh model sessions and cache per trial; edit transposes the affected phrase by +3 semitones.\n";
+                  << "Fresh model sessions and cache per trial.\n";
+
+                if (_mode != Mode::Listen)
+                    std::cout << "Edit transposes the affected phrase by +3 semitones.\n";
     }
     else
         std::cout << "48000 Hz | 2 channels | " << anasa::ExecutorSettings{}.workerCount << " executor workers | 256-frame tiles\n"
@@ -559,6 +593,30 @@ void RuntimeDemo::runSuite(bool neural)
 
     std::cout << "Recovery ends when the new generation is acknowledged and playback is enabled.\n"
               << "Underruns count active-playback callbacks; WAVs also include preparation silence.\n";
+
+    if (_mode == Mode::Listen)
+    {
+        ScenarioSettings playback;
+        playback.scenarioType = ScenarioType::LinearPlayback;
+        playback.name = "Full neural timeline playback";
+        playback.recoveryName = "Startup-to-ready latency";
+        playback.trialsPerPolicy = _trialsPerPolicy;
+        playback.workIterations = 0;
+        playback.backgroundPrimingMilliseconds = 0;
+        playback.playbackMilliseconds = static_cast<int>(std::ceil(1000.0 * _timeline->totalFrames() / _timeline->format().sampleRate));
+        playback.timeoutMilliseconds = 30000;
+
+        std::cout << "Listening scenario: start at frame zero and consume the entire timeline.\n"
+                    << "No edit is posted. WAVs retain startup silence and any missing audio.\n";
+
+        const ComparisonResult comparison = runComparison(playback);
+        printResults(comparison);
+
+        if (comparison.fifo.underruns != 0 || comparison.priority.underruns != 0)
+            throw std::runtime_error("Full playback contained underruns; inspect the saved WAVs");
+
+        return;
+    }
 
     const std::array<ScenarioSettings, 3> scenarios = makeScenarios();
 
