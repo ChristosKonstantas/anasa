@@ -253,7 +253,7 @@ or
 - `BENCHMARKS=ON`: also enable benchmark cases: requires `BUILD_TESTS=ON`.
 - `OPENVPI=ON`: build the TIGER v106 ONNX backend and enable neural runtime-demo modes. This requires `ONNXRUNTIME_ROOT`.
 - `NN_BENCHMARK=ON`: build the standalone inference benchmark. This requires `OPENVPI=ON`.
-- 
+  
 To enable benchmarks, replace `-DBENCHMARKS=OFF` with
 `-DBENCHMARKS=ON` in the configuration command, then rebuild.
 Use Release for performance measurements.
@@ -396,13 +396,13 @@ uninterrupted playback.
 **Maximum callback duration** measures elapsed time inside the simulated
 callback, including capture and checksum work. It does not measure callback
 start lateness, and the underrun counter is not a deadline-miss counter.
+
 ### Historical synthetic results
 
-The following output is from one local Windows Release run with the configuration
-above. These are illustrative measurements, not portable performance guarantees.
 The following output is from the Windows Release run documented on `main`
 at `af43e13`, before neural inference and callback recording were integrated.
 These are illustrative measurements, not portable performance guarantees.
+
 | Scenario | Policy | Median recovery (ms) | Maximum observed (ms) | Underruns / callbacks | Underrun rate |
 | --- | --- | ---: | ---: | ---: | ---: |
 | Seek recovery | FIFO | 668.57 | 685.88 | 3,178 / 3,768 | 84.34% |
@@ -434,33 +434,26 @@ hard real-time guarantees, or neural-inference performance.
 The GitHub Actions workflow in `.github/workflows/ci.yml` runs:
 
 - On pushes to any branch.
-- On pull requests targeting `main`, `multichannel-support`, `spsc`, or `scheduler`.
+- On pull requests targeting `main`, `spsc`, or `nn-inference`.
 - When manually triggered through the repository's Actions tab.
 
-The workflow configures and builds the project in Release with tests
-enabled on Ubuntu, Windows, and macOS, then runs the registered Catch2
-tests through CTest. Benchmark cases are explicitly disabled.
-
-The build configuration comes from the workflow's `build_type` matrix.
+The core jobs configure and build Release with `BUILD_TESTS=ON`,
+`BENCHMARKS=OFF`, and the default `OPENVPI=OFF` on Ubuntu, Windows,
+and macOS. They run the registered Catch2 tests through CTest.
 A failed matrix job does not cancel the other jobs.
 
-Configuration errors, build errors, failing tests, or discovering no
-tests cause the corresponding CI job to fail.
+A separate Windows job builds the runtime demo and standalone inference
+benchmark with `OPENVPI=ON` and `NN_BENCHMARK=ON`. It downloads ONNX Runtime
+1.31.1 and checks executable startup by running the demo with `--help`.
+
+The OpenVPI job checks compilation, linking, and executable startup.
+It does not download the voicebank or execute neural inference.
+
+The runtime demo's timed scenarios and the standalone inference benchmark
+are not executed by CI.
 
 Results and logs are available under the **C++ CI** workflow in the
 repository's Actions tab.
-
-The runtime demo is also compiled as part of the normal build. Its timed scenarios
-are not registered with CTest and are not executed by the current CI workflow.
-
-The workflow configures and builds the project in Release with tests
-enabled on Ubuntu, Windows, and macOS, then runs the registered Catch2
-tests through CTest with `OPENVPI=OFF`. Benchmark cases are explicitly disabled.
-
-A separate Windows job builds both neural executables with `OPENVPI=ON`
-and `NN_BENCHMARK=ON`, then checks runtime-demo startup with `--help`.
-It downloads ONNX Runtime but does not download the voicebank or run
-neural inference.
 
 ## Generating the dependency graph
 
