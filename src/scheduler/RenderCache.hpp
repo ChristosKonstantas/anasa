@@ -3,6 +3,7 @@
 
 #include <vector>
 
+#include "render/RenderLayout.hpp"
 #include "render/IChunkVersionReader.hpp"
 #include "render/RenderTypes.hpp"
 #include "scheduler/IRenderCacheReader.hpp"
@@ -13,7 +14,7 @@ namespace anasa
     class RenderCache final : public IRenderCacheReader
     {
     public:
-        RenderCache(int channelCount, int totalFrames, const IChunkVersionReader& versions);
+        RenderCache(int channelCount, int totalFrames, const IChunkVersionReader& versions, RenderLayout layout = RenderLayout());
 
         int chunkCount() const noexcept override;
         const AudioBuffer* findCurrent(int chunk) const override;
@@ -21,6 +22,7 @@ namespace anasa
         bool store(int chunk, int version, const AudioBuffer& samples);
 
     private:
+        const RenderLayout         _layout;
         const int                  _channelCount;
         const IChunkVersionReader& _versions;
         std::vector<CacheEntry>    _cacheEntries;

@@ -1,6 +1,6 @@
 #include "AudioSimulator.hpp"
 #include "audio/AudioConstants.hpp"
-
+#include <algorithm>
 #include <stdexcept>
 #include <chrono>
 #include <thread>
@@ -8,7 +8,7 @@
 namespace anasa 
 {
     using Clock = std::chrono::steady_clock;
-    AudioSimulator::AudioSimulator(AudioSettings settings, const std::atomic<bool>& engineStop, IAudioBlockProcessor& processor)
+    AudioSimulator::AudioSimulator(AudioSettings settings, const std::atomic<bool>& engineStop, IAudioBlockProcessor& processor, int captureFrames)
         : _settings(settings),
           _engineStop(engineStop),
           _processor(processor)
@@ -24,6 +24,11 @@ namespace anasa
 
         if (_settings.audioBlockFrames != _processor.blockFrames())
             throw std::invalid_argument("Simulator and processor block sizes must match");
+        if (captureFrames < 0)
+            throw std::invalid_argument("Capture frame capacity must not be negative");
+
+        if (captureFrames > 0)
+            _capture = AudioBuffer(_settings.channelCount, captureFrames);
 
         // Allocate output storage before the audio thread starts.
         _output = AudioBuffer(_settings.channelCount, _settings.audioBlockFrames);
@@ -85,6 +90,25 @@ namespace anasa
         return _checksum;
     }
 
+    AudioBuffer AudioSimulator::capturedAudio() const
+    {
+        if (_started)
+            throw std::logic_error("Read captured audio only after stop()");
+
+        if (_captureOverflow)
+            throw std::runtime_error("Audio capture capacity exceeded; recording is incomplete");
+
+        if (_capturedFrames == 0)
+            return {};
+
+        AudioBuffer result(_settings.channelCount, _capturedFrames);
+
+        for (int channel = 0; channel < _settings.channelCount; ++channel)
+            std::copy_n(_capture[channel].data(), _capturedFrames, result[channel].data());
+
+        return result;
+    }
+
     void AudioSimulator::periodicAudioDeviceClock() 
     {
         /* The function implements a periodic virtual audio-device clock and decides when callbacks should occur */
@@ -140,6 +164,19 @@ namespace anasa
     {
         AudioOutputBuffer output{_outputChannels, _settings.audioBlockFrames};
         const AudioProcessResult result = _processor.processBlock(output);
+
+        if (_capture.frameCount() > 0)
+        {
+            if (_settings.audioBlockFrames <= _capture.frameCount() - _capturedFrames)
+            {
+                for (int channel = 0; channel < _settings.channelCount; ++channel)
+                    std::copy_n(_output[channel].data(), _settings.audioBlockFrames, _capture[channel].data() + _capturedFrames);
+
+                _capturedFrames += _settings.audioBlockFrames;
+            }
+            else
+                _captureOverflow = true;
+        }
 
         if (!result.playing)
             return;

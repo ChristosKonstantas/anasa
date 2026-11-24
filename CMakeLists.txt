@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.22)
 
 project(anasa LANGUAGES CXX)
 
+find_package(Threads REQUIRED)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -26,35 +28,33 @@ include(${CMAKE_SOURCE_DIR}/cmake/AnasaModule.cmake)
 
 # External dependencies
 if(BUILD_TESTS)
-
     enable_testing()
 
     message(STATUS "BUILD_TESTS is ON. Configuring Catch2...")
 
-    if(DEFINED ENV{CATCH2_LIB}
-       AND NOT EXISTS "$ENV{CATCH2_LIB}/CMakeLists.txt")
-        message(
-            FATAL_ERROR
-            "CATCH2_LIB is set to '$ENV{CATCH2_LIB}', "
-            "but that does not look like the Catch2 source root."
+    if(DEFINED ENV{CATCH2_LIB})
+        cmake_path(
+            CONVERT "$ENV{CATCH2_LIB}"
+            TO_CMAKE_PATH_LIST catch2_SOURCE_DIR
+            NORMALIZE
         )
-    endif()
 
-    if(DEFINED ENV{CATCH2_LIB}
-       AND EXISTS "$ENV{CATCH2_LIB}/CMakeLists.txt")
+        if(NOT EXISTS "${catch2_SOURCE_DIR}/CMakeLists.txt")
+            message(
+                FATAL_ERROR
+                "CATCH2_LIB is set to '$ENV{CATCH2_LIB}', "
+                "but that does not look like the Catch2 source root."
+            )
+        endif()
 
-        message(STATUS "Catch2: using local checkout at $ENV{CATCH2_LIB}")
-
-        set(catch2_SOURCE_DIR "$ENV{CATCH2_LIB}")
+        message(STATUS "Catch2: using local checkout at ${catch2_SOURCE_DIR}")
 
         add_subdirectory(
-            "$ENV{CATCH2_LIB}"
+            "${catch2_SOURCE_DIR}"
             "${CMAKE_BINARY_DIR}/_deps/catch2-build"
             EXCLUDE_FROM_ALL
         )
-
     else()
-
         message(STATUS "Catch2: fetching via FetchContent")
 
         include(FetchContent)
@@ -66,10 +66,10 @@ if(BUILD_TESTS)
         )
 
         FetchContent_MakeAvailable(Catch2)
-
     endif()
 
-    list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
+    list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
+    list(REMOVE_DUPLICATES CMAKE_MODULE_PATH)
 
     set_target_properties(
         Catch2
@@ -82,5 +82,16 @@ if(BUILD_TESTS)
 endif()
 
 # Code
+option(OPENVPI "Build the TIGER v106 ONNX renderer" OFF)
+option(NN_BENCHMARK "Build the standalone inference benchmark" OFF)
+
+if(NN_BENCHMARK AND NOT OPENVPI)
+    message(FATAL_ERROR "NN_BENCHMARK requires OPENVPI=ON")
+endif()
+
 add_subdirectory(src)
 add_subdirectory(runtime-demo)
+
+if(NN_BENCHMARK)
+    add_subdirectory(apps)
+endif()

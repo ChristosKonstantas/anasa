@@ -21,9 +21,9 @@ namespace anasa
         if (_outcome == RenderOutcome::Cancel)
             return false;
 
-        if (stopRequested.load(std::memory_order_acquire) || job.cancelled.load(std::memory_order_relaxed) || job.version != 1)
+        if (stopRequested.load(std::memory_order_acquire) || job.isCancelled() || job.version != 1)
         {
-            job.cancelled.store(true, std::memory_order_relaxed);
+            job.cancel();
             return false;
         }
 

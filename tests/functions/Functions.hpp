@@ -55,7 +55,6 @@ namespace anasa::functions
         job->chunk = chunk;
         job->version = versions.get(chunk);
         job->tilesRemaining.store(TILES_PER_CHUNK, std::memory_order_release);
-        job->cancelled.store(false, std::memory_order_release);
 
         for (int channel = 0; channel < job->samples.channelCount(); ++channel)
             std::fill(job->samples[channel].begin(), job->samples[channel].end(), UNTOUCHED_SAMPLE);
@@ -67,7 +66,7 @@ namespace anasa::functions
     {
         job.chunk = chunk;
         job.version = versions.get(chunk);
-        job.cancelled.store(false, std::memory_order_release);
+
         for (int channel = 0; channel < job.samples.channelCount(); ++channel)
             std::fill(job.samples[channel].begin(), job.samples[channel].end(), UNTOUCHED_SAMPLE);
     }

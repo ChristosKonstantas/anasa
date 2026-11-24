@@ -4,8 +4,10 @@
 
 namespace anasa
 {
-    ActiveRenderJobs::ActiveRenderJobs(int channelCount, int chunkCount)
-        : _channelCount(channelCount)
+    ActiveRenderJobs::ActiveRenderJobs(int channelCount, int chunkCount,
+                                 RenderLayout layout)
+    : _layout(layout),
+      _channelCount(channelCount)
     {
         if (_channelCount <= 0)
             throw std::invalid_argument("channelCount must be greater than zero");
@@ -22,7 +24,7 @@ namespace anasa
             return false;
 
         const std::shared_ptr<RenderJob>& job = _jobs[chunk];
-        return job != nullptr && job->version == version && !job->cancelled.load(std::memory_order_relaxed);
+        return job != nullptr && job->version == version && !job->isCancelled();
     }
 
     std::shared_ptr<RenderJob> ActiveRenderJobs::create(int chunk, int version)
@@ -32,7 +34,7 @@ namespace anasa
 
         cancel(chunk);
 
-        std::shared_ptr<RenderJob> job = std::make_shared<RenderJob>(_channelCount);
+        std::shared_ptr<RenderJob> job = std::make_shared<RenderJob>(_channelCount, _layout);
         
         job->chunk = chunk;
         job->version = version;
@@ -49,7 +51,7 @@ namespace anasa
         const std::shared_ptr<RenderJob>& job = _jobs[chunk];
 
         if (job != nullptr)
-            job->cancelled.store(true, std::memory_order_relaxed);
+            job->cancel();
     }
 
     void ActiveRenderJobs::cancelAll() noexcept
@@ -58,7 +60,7 @@ namespace anasa
         {
             if (job != nullptr)
             {
-                job->cancelled.store(true, std::memory_order_relaxed);
+                job->cancel();
                 job.reset();
             }
         }
@@ -74,7 +76,7 @@ namespace anasa
         if (activeJob != job)
             return false;
 
-        const bool usable = !job->cancelled.load(std::memory_order_relaxed);
+        const bool usable = !job->isCancelled();
         
         activeJob.reset();
         

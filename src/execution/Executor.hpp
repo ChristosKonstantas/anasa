@@ -45,23 +45,24 @@ namespace anasa
         bool                                   popCompleted(std::shared_ptr<RenderJob>& job) override; // Collect completed jobs. Moves one fully completed RenderJob to the caller.
         int                                    workerCount() const override; // Returns the fixed number of configured worker threads.
         int                                    queuedTaskCount() override; // Executor queue inspection providing task count
-    
-    private:
-        void                                   workerLoop(); // Waits for work, removes one FIFO task, renders outside the queue mutex and exits when shutdown is requested.
+        void                                   rethrowFailure() const;
         
-        ExecutorSettings                       _settings;
-        RenderTaskProcessor                    _taskProcessor;
-        std::vector<std::thread>               _workers;
+    private:
+        void                                      workerLoop(int worker); // Waits for work, removes one FIFO task, renders outside the queue mutex and exits when shutdown is requested.
+        std::vector<std::shared_ptr<RenderJob>>  _runningJobs;
+        ExecutorSettings                         _settings;
+        RenderTaskProcessor                      _taskProcessor;
+        std::vector<std::thread>                 _workers;
 
-        std::queue<RenderTask>                 _renderTasksQueue; // 1 Scheduler (producer) / Many workers (consumers) -> SPMC
-        std::mutex                             _taskMutex;
-        std::condition_variable                _taskConditionVariable;
+        std::queue<RenderTask>                   _renderTasksQueue; // 1 Scheduler (producer) / Many workers (consumers) -> SPMC
+        std::mutex                               _taskMutex;
+        std::condition_variable                  _taskConditionVariable;
 
-        std::queue<std::shared_ptr<RenderJob>> _completedJobsQueue; // Many workers (producers) / 1 Scheduler (consumer) -> MPSC
-        std::mutex                             _completedMutex;
+        std::queue<std::shared_ptr<RenderJob>>   _completedJobsQueue; // Many workers (producers) / 1 Scheduler (consumer) -> MPSC
+        std::mutex                               _completedMutex;
 
-        std::atomic<bool>                      _stopRequested;
-        bool                                   _started;
+        std::atomic<bool>                        _stopRequested;
+        bool                                     _started;
     };
 
 } // namespace anasa

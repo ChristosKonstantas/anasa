@@ -29,7 +29,8 @@ namespace anasa
         RenderTaskProcessor processor(renderer);
         VersionTable versions(1);
         std::shared_ptr<RenderJob> job = functions::makeTestRenderJob(versions, 0, channelCount);
-        job->cancelled.store(alreadyCancelled, std::memory_order_relaxed);
+        if (alreadyCancelled)
+            job->cancel();
 
         const bool expectedCancellation = outcome != RenderOutcome::Complete || stopRequested.load(std::memory_order_acquire) || alreadyCancelled;
 
@@ -40,7 +41,7 @@ namespace anasa
 
             REQUIRE(jobCompleted == (tile == TILES_PER_CHUNK - 1));
             REQUIRE(job->tilesRemaining.load(std::memory_order_relaxed) == TILES_PER_CHUNK - tile - 1);
-            REQUIRE(job->cancelled.load(std::memory_order_relaxed) == expectedCancellation);
+            REQUIRE(job->isCancelled() == expectedCancellation);
             REQUIRE(renderer.calls[tile].load(std::memory_order_relaxed) == 1);
         }
 
@@ -109,7 +110,7 @@ namespace anasa
 
         REQUIRE(completionCount == 1);
         REQUIRE(job->tilesRemaining.load(std::memory_order_acquire) == 0);
-        REQUIRE_FALSE(job->cancelled.load(std::memory_order_relaxed));
+        REQUIRE_FALSE(job->isCancelled());
 
         for (int channel = 0; channel < channelCount; ++channel)
         {

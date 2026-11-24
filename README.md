@@ -6,7 +6,7 @@ A C++ experimental prototype for studying how to schedule computationally expens
 
 The prototype uses a simulated periodic audio-device callback. It is not an audio host, plugin, or complete DAW.
 
-The current renderer generates deterministic synthetic audio and artificial CPU load. **It does not yet perform neural inference.**
+The default engine renderer generates deterministic synthetic audio and artificial CPU load. The optional `OPENVPI` backend performs whole-phrase neural inference through `IPhraseRenderer`. `PhraseTileRenderer` adapts it to the existing `ITileRenderer` execution path. The runtime demo can run synthetic rendering, neural rendering, or both sequentially, and records the simulated callback output to WAV. `NN_BENCHMARK` separately builds the standalone inference benchmark.
 
 The problem statement is the following:
 
@@ -14,7 +14,7 @@ Given limited rendering capacity and moving playback deadlines, which work shoul
 
 The project separates that problem into smaller components:
 
-- A deterministic synthetic renderer that turns timeline tiles into synthetic samples.
+- Interchangeable tile renderers: deterministic synthetic work and an optional adapter for prepared singing phrases.
 - A fixed worker pool that performs render work concurrently.
 - A scheduler that classifies, orders, caches, and publishes rendered work.
 - Lock-free Single-producer/single-consumer (SPSC) queues. They store commands and ready for consumption audio blocks.
@@ -29,6 +29,8 @@ ANASA is divided into small **CMake targets** with one-directional dependencies.
 
 ![CMake dependency graph](docs/dependencies.svg)
 
+This graph shows the default build with `OPENVPI=OFF` and
+`NN_BENCHMARK=OFF`. Optional ONNX targets are not included.
 
 ### Runtime communication
 
@@ -42,54 +44,63 @@ flowchart TD
     Control -->|"Engine::post() calls Scheduler::post()"| CommandQueue
     CommandQueue -->|"Scheduler::readCommands()"| Scheduler
 
-    ExecutorQueue["Bounded SPMC FIFO (mutex): _renderTasksQueue"]
-    Workers["Executor workers: Executor::workerLoop()"]
-    Render["Render tile into RenderJob::samples"]
-    CompletionQueue["MPSC completion queue (mutex): _completedJobsQueue"]
-
+    Schedule["Scheduler::scheduleRenderJobs()"]
     Classify["Classify chunks: classifyChunk()"]
-    Pending["Scheduler priority queue: _pendingTiles"]
-
-    Scheduler -->|"scheduleRenderJobs() calls scheduleChunk()"| Classify
-    Classify -->|"Urgent, visible, or background"| Pending
-    Scheduler -->|"refreshPendingClassifications() updates queued priorities"| Pending
-    Pending -->|"dispatchPendingTiles() calls Executor::submit()"| ExecutorQueue
-    ExecutorQueue -->|"Move front RenderTask, then pop"| Workers
-    Workers -->|"RenderTaskProcessor::process() calls Renderer::renderTile()"| Render
-    Render -->|"Worker publishes the job if process() accounts for its final tile"| CompletionQueue
+    Pending["Scheduler pending queue: _pendingTiles"]
+    Dispatch["Scheduler::dispatchPendingTiles()"]
     Admission["BackgroundRenderGate: _backgroundGate"]
 
-    Scheduler -->|"updateBackgroundAdmission(): Priority low/high water thresholds"| Admission
-    Admission -.->|"Controls background dispatch"| Pending
+    Scheduler -->|"Schedule work"| Schedule
+    Schedule -->|"scheduleChunk() calls classifyChunk()"| Classify
+    Classify -->|"Admit tiles as urgent, visible, or background"| Pending
+    Schedule -->|"Priority, when classifications change: refreshPendingClassifications()"| Pending
+    Scheduler -->|"Dispatch work"| Dispatch
+    Pending -->|"Take the next pending tile"| Dispatch
+    Scheduler -->|"updateBackgroundAdmission(): observe thresholds or reset gate"| Admission
+    Admission -.->|"allowsBackground() controls background dispatch"| Dispatch
+
+    ExecutorQueue["Bounded SPMC FIFO with mutex: _renderTasksQueue"]
+    Workers["Executor workers: Executor::workerLoop()"]
+    Render["ITileRenderer: Renderer or PhraseTileRenderer"]
+    CompletionQueue["MPSC completion queue with mutex: _completedJobsQueue"]
+
+    Dispatch -->|"Executor::submit()"| ExecutorQueue
+    ExecutorQueue -->|"Move front RenderTask, then pop"| Workers
+    Workers -->|"RenderTaskProcessor::process() calls renderTile()"| Render
+    Render -->|"Worker enqueues the job when process() accounts for its final tile"| CompletionQueue
+
+    Collect["Scheduler::collectFinishedJobs()"]
     Cache["Scheduler-owned RenderCache: _cache"]
+    Feed["Scheduler::feedAudioQueue()"]
     ReadyQueue["SPSC ready-audio queue: _readyAudioQueue"]
     Audio["AudioSimulator thread: AudioBlockProcessor::processBlock()"]
 
-    Cache -->|"TimelineAudioPublisher::publish() copies ordered blocks using pushWith()"| ReadyQueue
+    Scheduler -->|"Collect completions"| Collect
+    CompletionQueue -->|"Executor::popCompleted()"| Collect
+    Collect -->|"ActiveRenderJobs::finish() accepts; RenderCache::store() validates and copies"| Cache
+    Scheduler -->|"Publish audio and check playback readiness"| Feed
+    Cache -->|"Current PCM read by TimelineAudioPublisher"| Feed
+    Feed -->|"TimelineAudioPublisher::publish() copies ordered blocks"| ReadyQueue
     ReadyQueue -->|"front(): pop consumed or outdated blocks"| Audio
 
     Shared["SharedState atomics: _sharedState"]
 
-    Scheduler -->|"Publish playing, targetFrame, generation"| Shared
+    Scheduler -->|"Publish playback state, targetFrame, and generation"| Shared
     Shared -->|"PlaybackProtocol::currentFrame()"| Scheduler
-
-    Audio <-->|"Audio thread reads playback state and writes cursor and cursor generation"| Shared
+    Feed -.->|"PlaybackController::startIfReady() may enable playing"| Shared
+    Audio <-->|"Read playback state; write cursor and cursor generation"| Shared
 
     Versions["Chunk versions: _versionTable"]
-
-    Versions -->|"RenderCancellation::shouldCancel()"| Render
-
-    Collect["Scheduler::collectFinishedJobs()"]
     Invalidate["Scheduler::invalidateVersions()"]
     Retire["Retire cancelled job: ActiveRenderJobs::finish()"]
 
-    Scheduler -->|"Collect completions"| Collect
-    CompletionQueue -->|"Executor::popCompleted()"| Collect
-    Versions -.->|"RenderCache checks current chunk version"| Cache
-    Collect -->|"ActiveRenderJobs::finish() accepts; RenderCache::store() validates and copies"| Cache
-    Pending -.->|"Scheduler discards a cancelled job's final outstanding tile"| Retire
-    Scheduler -->|"Process Edit command"| Invalidate
+    Versions -->|"RenderCancellation::shouldCancel()"| Render
+    Versions -.->|"RenderCache validates versions"| Cache
+    Scheduler -->|"Handle Edit command"| Invalidate
     Invalidate -->|"Bump affected chunk versions"| Versions
+    Invalidate -.->|"ActiveRenderJobs::cancel() requests job cancellation"| Render
+    Pending -.->|"makeRoomForUrgentChunk(): account for the last discarded tile of a cancelled job"| Retire
+
     classDef thread stroke-width:3px;
     classDef threadPool stroke-width:6px;
 
@@ -97,11 +108,24 @@ flowchart TD
     class Workers threadPool;
 ```
 
-The diagram shows how commands, rendering work, and audio move between runtime threads. Scheduler coordinates the pipeline. Executor workers render tiles concurrently. AudioSimulator drives AudioBlockProcessor to consume published audio independently. Thicker borders identify threads. The heavier border identifies the Executor worker pool.
+The diagram shows calls and data flow between runtime threads. Each normal
+scheduler iteration reads commands, collects completed jobs, feeds the audio
+queue, updates background admission, schedules jobs, and dispatches pending
+tiles, then requests a 1 ms sleep.
+
+Synthetic tiles can run on multiple executor workers. The neural demo uses
+one worker and one whole phrase per job. `PhraseTileRenderer` calls
+`IPhraseRenderer`, implemented by `OpenVpiRenderer`, on that worker. Both
+renderers write `RenderJob::samples` before completion is published.
+Thicker borders identify threads. The heavier border identifies the worker pool.
+
+Priority changes affect `_pendingTiles`. Tasks already submitted to the
+executor remain FIFO. Seeking changes playback urgency without automatically
+cancelling already submitted work.
 
 - **Command handling:** The control thread posts commands through `_commandQueue`. Scheduler processes them to update playback, viewport, and content state.
 - **Work selection:** Scheduler classifies chunks as urgent, visible, or background and places their tiles in `_pendingTiles`. It refreshes classifications when playback or viewport changes require it. In Priority mode, low/high water thresholds control background dispatch while playback is requested. If urgent work cannot fit, Scheduler reclaims cancelled pending tiles and cancels lower-priority jobs, starting with the least important, to admit a complete urgent chunk. The pending-tile limit still applies. FIFO keeps its existing admission order.
-- **Parallel rendering:** Selected tiles enter the bounded `_renderTasksQueue`. Workers take tasks and render separate regions of a shared `RenderJob::samples` buffer. Each tile is accounted for once: by a worker after submission, or by Scheduler if discarded before submission after cancellation. If a worker accounts for the final tile, it places the job in `_completedJobsQueue`; if Scheduler accounts for the final tile of a cancelled job, it retires that job directly. Jobs abandoned during shutdown may never produce a completion.
+- **Parallel rendering:** Selected tiles enter the bounded `_renderTasksQueue`. Workers take tasks and render separate regions of a shared `RenderJob::samples` buffer. Each tile is accounted for once: by a worker after submission, or by Scheduler if discarded before submission after cancellation. If a worker accounts for the final tile, it places the job in `_completedJobsQueue`. If Scheduler accounts for the final tile of a cancelled job, it retires that job directly. Jobs abandoned during shutdown may never produce a completion.
 - **Completion and publication:** `collectFinishedJobs()` checks job identity, cancellation, and version before copying accepted samples into `_cache`. `feedAudioQueue()` copies cached samples into `_readyAudioQueue` as generation-tagged blocks in timeline order.
 - **Audio consumption:** AudioBlockProcessor consumes blocks matching its current generation and expected position, discards outdated blocks, and reports playback progress through _sharedState. During active playback, a missing required block produces silence, reports an underrun, and advances the playback cursor. At the timeline end, callbacks produce silence without reporting further underruns or advancing the cursor, even before Scheduler clears playback permission.
 - **Transport and invalidation:** Shared atomics communicate playback state, seek targets, generations, and cursor acknowledgements. Edits bump affected chunk versions so Renderer can abandon obsolete work and Scheduler can reject obsolete results.
@@ -227,7 +251,9 @@ or
 
 - `BUILD_TESTS=ON`: build the Catch2 tests.
 - `BENCHMARKS=ON`: also enable benchmark cases: requires `BUILD_TESTS=ON`.
-
+- `OPENVPI=ON`: build the TIGER v106 ONNX backend and enable neural runtime-demo modes. This requires `ONNXRUNTIME_ROOT`.
+- `NN_BENCHMARK=ON`: build the standalone inference benchmark. This requires `OPENVPI=ON`.
+  
 To enable benchmarks, replace `-DBENCHMARKS=OFF` with
 `-DBENCHMARKS=ON` in the configuration command, then rebuild.
 Use Release for performance measurements.
@@ -246,16 +272,20 @@ CTest command works across platforms without needing the executable's precise lo
 
 ## Runtime demo
 
-[`runtime-demo/main.cpp`](runtime-demo/main.cpp) runs a fixed comparison of FIFO
-and Priority scheduling using the complete engine and simulated audio callback.
+[`runtime-demo/main.cpp`](runtime-demo/main.cpp) starts
+[`RuntimeDemo`](runtime-demo/RuntimeDemo.cpp), which compares FIFO and Priority
+using the complete engine and simulated audio callback.
 
-Each scenario runs five trials per policy. Every trial creates a fresh engine,
-and the first policy alternates between FIFO and Priority to reduce consistent
-execution-order bias. One complete execution runs 30 trials; allow more than
-a minute for it to finish.
+The `synthetic` mode defaults to five trials per policy. Neural modes require
+an explicit trial count. Every trial creates a fresh engine, and the first
+policy alternates between FIFO and Priority. A three-scenario suite with five
+trials per policy runs 30 trials. `both` runs two such suites. The `listen`
+mode instead runs one full-playback scenario per policy.
 
-The demo uses synthetic rendering. It does not perform neural inference, play
-through an audio device, or export a WAV file.
+For model downloads, ONNX Runtime installation, and neural build/run commands,
+see [Neural inference setup](InferenceSetup.md).
+
+The demo supports synthetic rendering and optional OpenVPI neural inference. It records the simulated callback output to WAV, including preparation silence. It does not play directly through an audio device.
 
 ### Build and run
 
@@ -268,13 +298,13 @@ Run commands from the repository root. The executable target is currently named
 ```powershell
 cmake -S . -B build -DBUILD_TESTS=OFF
 cmake --build build --config Release --target main --parallel
-.\build\runtime-demo\Release\main.exe
+.\build\runtime-demo\Release\main.exe synthetic
 ```
 
 To save the output, use this command instead of the final command above:
 
 ```powershell
-.\build\runtime-demo\Release\main.exe | Tee-Object -FilePath ".\build\runtime-demo-results.txt"
+.\build\runtime-demo\Release\main.exe synthetic | Tee-Object -FilePath ".\build\runtime-demo-results.txt"
 ```
 
 **Linux / macOS — Unix Makefiles or Ninja**
@@ -285,12 +315,15 @@ cmake --build build/runtime-release --target main --parallel
 ./build/runtime-release/runtime-demo/main
 ```
 
-The executable takes no command-line arguments. Scenario settings are defined
-in `makeScenarios()` in `runtime-demo/main.cpp`.
+Run `main --help` for mode arguments. `synthetic`, `neural`, and `both` run the seek, viewport, and edit comparisons. `listen` performs full neural timeline playback without edits:
+
+`main listen <voicebank> <threads> <steps> <trials> <output-directory>`
+
+Neural modes require a build configured with `OPENVPI=ON`.
 
 ### Configuration and scenarios
 
-The current configuration uses:
+The default synthetic configuration uses:
 
 | Setting | Value |
 | --- | --- |
@@ -318,7 +351,7 @@ Other engine settings retain their defaults.
 3. **Edit recovery during playback:** seek to 6 seconds and wait for recovery,
    wait another 1,000 ms, then invalidate approximately the `[7 s, 7.25 s]`
    region. Measure edit recovery and wait for a further 1,000 ms afterward.
-   This edit changes the synthetic content version; it does not modify notes
+   This edit changes the synthetic content version. It does not modify notes
    or lyrics.
 
 Background preparation uses a fixed waiting interval, not a fixed number of
@@ -339,10 +372,10 @@ first valid audio block of the new generation has already been consumed.
 The observation loop requests 250-microsecond sleeps, but its actual wake-up
 timing depends on the operating system.
 
-**Median recovery** summarizes the five trials. **Worst recovery** is the
+**Median recovery** summarizes the configured trials per policy. **Worst recovery** is the
 largest observed value, not a guaranteed upper bound.
 
-**Callbacks** and **underruns** are summed across the five trials. The underrun
+**Callbacks** and **underruns** are summed across the configured trials per policy. The underrun
 rate is:
 
 ```text
@@ -360,10 +393,15 @@ The console label `Active playback: 2000 ms` refers to requested wall-clock
 observation waits. It is not a measured guarantee of exactly 2,000 ms of
 uninterrupted playback.
 
-### Example results
+**Maximum callback duration** measures elapsed time inside the simulated
+callback, including capture and checksum work. It does not measure callback
+start lateness, and the underrun counter is not a deadline-miss counter.
 
-The following output is from one local Windows Release run with the configuration
-above. These are illustrative measurements, not portable performance guarantees.
+### Historical synthetic results
+
+The following output is from the Windows Release run documented on `main`
+at `af43e13`, before neural inference and callback recording were integrated.
+These are illustrative measurements, not portable performance guarantees.
 
 | Scenario | Policy | Median recovery (ms) | Maximum observed (ms) | Underruns / callbacks | Underrun rate |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -390,29 +428,32 @@ scheduling, and competing load. Record that information when comparing runs.
 Five trials and a simulated callback do not establish audio-device latency,
 hard real-time guarantees, or neural-inference performance.
 
+
 ## Continuous integration
 
 The GitHub Actions workflow in `.github/workflows/ci.yml` runs:
 
 - On pushes to any branch.
-- On pull requests targeting `main`, `multichannel-support`, `spsc`, or `scheduler`.
+- On pull requests targeting `main`, `spsc`, or `nn-inference`.
 - When manually triggered through the repository's Actions tab.
 
-The workflow configures and builds the project in Release with tests
-enabled on Ubuntu, Windows, and macOS, then runs the registered Catch2
-tests through CTest. Benchmark cases are explicitly disabled.
-
-The build configuration comes from the workflow's `build_type` matrix.
+The core jobs configure and build Release with `BUILD_TESTS=ON`,
+`BENCHMARKS=OFF`, and the default `OPENVPI=OFF` on Ubuntu, Windows,
+and macOS. They run the registered Catch2 tests through CTest.
 A failed matrix job does not cancel the other jobs.
 
-Configuration errors, build errors, failing tests, or discovering no
-tests cause the corresponding CI job to fail.
+A separate Windows job builds the runtime demo and standalone inference
+benchmark with `OPENVPI=ON` and `NN_BENCHMARK=ON`. It downloads ONNX Runtime
+1.31.1 and checks executable startup by running the demo with `--help`.
+
+The OpenVPI job checks compilation, linking, and executable startup.
+It does not download the voicebank or execute neural inference.
+
+The runtime demo's timed scenarios and the standalone inference benchmark
+are not executed by CI.
 
 Results and logs are available under the **C++ CI** workflow in the
 repository's Actions tab.
-
-The runtime demo is also compiled as part of the normal build. Its timed scenarios
-are not registered with CTest and are not executed by the current CI workflow.
 
 ## Generating the dependency graph
 

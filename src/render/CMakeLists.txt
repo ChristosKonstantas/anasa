@@ -4,8 +4,11 @@ anasa_add_module(
     SOURCES
         IChunkVersionReader.hpp
         ITileRenderer.hpp
+        IPhraseRenderer.hpp
+        PhraseRenderTypes.hpp
         kernels/IRenderKernel.hpp
         RenderConstants.hpp
+        RenderLayout.hpp
         RenderTypes.hpp
 )
 
@@ -22,7 +25,15 @@ anasa_add_module(
         RenderCancellation.hpp
         kernels/SyntheticRenderKernel.cpp
         kernels/SyntheticRenderKernel.hpp
+        kernels/PcmRenderKernel.hpp
+        PreparedSingingTimeline.hpp
+        PhraseTileRenderer.hpp
+        PhraseTileRenderer.cpp
 )
 
-target_link_libraries(render-contracts INTERFACE audio-buffer)
+if(OPENVPI)
+    add_subdirectory(openvpi)
+endif()
+
+target_link_libraries(render-contracts INTERFACE audio-buffer Threads::Threads)
 target_link_libraries(renderer PUBLIC render-contracts)

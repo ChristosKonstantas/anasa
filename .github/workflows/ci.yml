@@ -10,14 +10,44 @@ on:
   pull_request:
     branches:
       - main
-      - multichannel-support
       - spsc
-      - scheduler
+      - nn-inference
 
 permissions:
   contents: read
 
 jobs:
+  build-openvpi:
+    name: Build OpenVPI (Windows, Release)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Prepare ONNX Runtime 1.31.1
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path "local-deps" | Out-Null
+          Invoke-WebRequest -Uri "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/1.31.1/microsoft.ml.onnxruntime.1.31.1.nupkg" -OutFile "local-deps/onnxruntime.zip"
+          Expand-Archive -LiteralPath "local-deps/onnxruntime.zip" -DestinationPath "local-deps/onnxruntime-package" -Force
+          $ortRoot = Join-Path $env:GITHUB_WORKSPACE "local-deps/onnxruntime"
+          New-Item -ItemType Directory -Force -Path "$ortRoot/include", "$ortRoot/lib" | Out-Null
+          Copy-Item -Path "local-deps/onnxruntime-package/build/native/include/*" -Destination "$ortRoot/include" -Recurse -Force
+          Copy-Item -Path "local-deps/onnxruntime-package/runtimes/win-x64/native/*" -Destination "$ortRoot/lib" -Recurse -Force
+
+      - name: Configure neural targets
+        run: >-
+          cmake -S . -B build/openvpi -A x64
+          -DBUILD_TESTS=OFF -DOPENVPI=ON -DNN_BENCHMARK=ON
+          "-DONNXRUNTIME_ROOT=${{ github.workspace }}/local-deps/onnxruntime"
+
+      - name: Build neural targets
+        run: cmake --build build/openvpi --config Release --target main anasa-inference-benchmark --parallel
+
+      - name: Check executable startup
+        run: .\build\openvpi\runtime-demo\Release\main.exe --help
   build-and-test:
     name: Build and test (${{ matrix.os }}, ${{ matrix.build_type }})
     runs-on: ${{ matrix.os }}

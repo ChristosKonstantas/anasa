@@ -5,13 +5,14 @@
 #include "audio/AudioTypes.hpp"
 #include "scheduler/IRenderCacheReader.hpp"
 #include "utils/queues/SpscQueue.hpp"
+#include "render/RenderLayout.hpp"
 
 namespace anasa
 {
     class TimelineAudioPublisher
     {
     public:
-        TimelineAudioPublisher(int audioBlockFrames, int channelCount, int totalFrames, SpscQueue<AudioBlock>& readyAudioQueue);
+        TimelineAudioPublisher(int audioBlockFrames, int channelCount, int totalFrames, SpscQueue<AudioBlock>& readyAudioQueue, RenderLayout layout = RenderLayout());
 
         void reset(int targetFrame) noexcept;
 
@@ -22,6 +23,8 @@ namespace anasa
         bool entireRemainderPublished() const noexcept;
 
     private:
+        const RenderLayout     _layout;
+
         const int              _audioBlockFrames;
         const int              _channelCount;
         const int              _totalFrames;

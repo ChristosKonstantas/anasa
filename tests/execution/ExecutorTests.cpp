@@ -122,7 +122,7 @@ namespace anasa
 
         REQUIRE(completedJob == job);
         REQUIRE(job->tilesRemaining.load(std::memory_order_acquire) == 0);
-        REQUIRE_FALSE(job->cancelled.load(std::memory_order_relaxed));
+        REQUIRE_FALSE(job->isCancelled());
 
         for (int frame = 0; frame < CHUNK_FRAMES; ++frame)
         {
@@ -169,7 +169,7 @@ namespace anasa
 
         REQUIRE(completedJob == job);
         REQUIRE(job->tilesRemaining.load(std::memory_order_acquire) == 0);
-        REQUIRE(job->cancelled.load(std::memory_order_relaxed));
+        REQUIRE(job->isCancelled());
 
         // Cancellation happened before rendering started.
         for (int frame = 0; frame < CHUNK_FRAMES; ++frame)
@@ -191,7 +191,7 @@ namespace anasa
         std::shared_ptr<RenderJob> job = functions::makeTestRenderJob(versions, 1);
         std::shared_ptr<RenderJob> completedJob;
 
-        job->cancelled.store(true, std::memory_order_relaxed);
+        job->cancel();
 
         executor.start();
 
@@ -207,7 +207,7 @@ namespace anasa
 
         REQUIRE(completedJob == job);
         REQUIRE(job->tilesRemaining.load(std::memory_order_acquire) == 0);
-        REQUIRE(job->cancelled.load(std::memory_order_relaxed));
+        REQUIRE(job->isCancelled());
 
         for (int frame = 0; frame < CHUNK_FRAMES; ++frame)
         {

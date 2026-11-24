@@ -11,7 +11,7 @@ namespace anasa
         if (stopRequested.load(std::memory_order_acquire))
             return true;
 
-        if (job.cancelled.load(std::memory_order_relaxed))
+        if (job.isCancelled())
             return true;
 
         return _versionTable.get(job.chunk) != job.version;

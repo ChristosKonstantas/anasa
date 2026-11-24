@@ -16,7 +16,7 @@ namespace anasa
     {
     public:
         // Borrowed dependencies must outlive the simulator and its worker thread.
-        AudioSimulator(AudioSettings settings, const std::atomic<bool>& engineStop, IAudioBlockProcessor& processor);
+        AudioSimulator(AudioSettings settings, const std::atomic<bool>& engineStop, IAudioBlockProcessor& processor, int captureFrames = 0);
         ~AudioSimulator();
 
         AudioSimulator(const AudioSimulator&) = delete;
@@ -33,7 +33,7 @@ namespace anasa
         long long                getUnderrunsCount() const;
         long long                getCallbackMaxInUs() const;
         double                   getChecksum() const;
-
+        AudioBuffer              capturedAudio() const;
     private:
         void                     periodicAudioDeviceClock();
         void                     audioCallback();
@@ -42,6 +42,9 @@ namespace anasa
         const std::atomic<bool>&                  _engineStop;
         IAudioBlockProcessor&                     _processor;
         AudioBuffer                               _output;
+        AudioBuffer                               _capture;
+        int                                       _capturedFrames = 0;
+        bool                                      _captureOverflow = false;
         std::vector<float*>                       _outputChannels;
         std::thread                               _audioThread;
         std::atomic<bool>                         _stopRequested{false};
